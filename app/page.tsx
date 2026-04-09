@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from './supabase'; 
 
 // ========================================================
-// 🎨 ESTÉTICA MODULAR (CADA ESPACIO TIENE SU REGLA)
+// 🎨 ESTÉTICA MODULAR
 // ========================================================
-const RADIO_GENERAL = "rounded-2xl"; // Todos los bordes redondeados iguales
+const RADIO_GENERAL = "rounded-2xl"; 
 
 const ESTETICA_LOGIN = {
   contenedor: `w-full max-w-[300px] bg-white p-6 ${RADIO_GENERAL} shadow-lg shadow-slate-200/40 border border-slate-100`,
@@ -27,11 +28,29 @@ const ESTETICA_TARJETA = {
   btnAccionInactivo: `h-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center transition-all ${RADIO_GENERAL} bg-slate-50 text-slate-400 hover:bg-slate-100 border border-slate-100`,
 };
 
-const AMIGOS = ['Tomás', 'Pablo', 'Tito', 'Uli', 'Coque'];
+// --- NUEVOS USUARIOS Y CONTRASEÑAS ---
+const AMIGOS = ['Tomas', 'Koke', 'Tito', 'Uli', 'Pablo', 'Oscarcito'];
+
+const CREDENCIALES: Record<string, string> = {
+  'Tomas': '123',
+  'Koke': '123',
+  'Tito': '123',
+  'Uli': '123',
+  'Pablo': '123',
+  'Oscarcito': '123'
+};
+
+// --- NUEVOS TAGS ---
 const TAGS_DISPONIBLES = [
-  { label: 'Play 5', emoji: '🎮' }, { label: 'Asado', emoji: '🥩' },
-  { label: 'Juegos de mesa', emoji: '🎲' }, { label: 'Novias', emoji: '👩‍❤️‍👨' },
-  { label: 'Bebidas', emoji: '🍻' }
+  { label: 'PS5', emoji: '🎮' }, 
+  { label: 'Asado', emoji: '🥩' },
+  { label: 'Juegos de Mesa', emoji: '🎲' }, 
+  { label: 'Novias Invitadas', emoji: '👩‍❤️‍👨' },
+  { label: 'Chupi', emoji: '🥃' },
+  { label: 'Minubis', emoji: '👩🏻‍🦰' },
+  { label: 'Lowcost', emoji: '💸' },
+  { label: 'María', emoji: '🍁' },
+  { label: 'Fiesta', emoji: '🎉' }
 ];
 
 // --- VARIANTES PARA ANIMACIONES ---
@@ -51,64 +70,34 @@ export default function Home() {
   const [errorLogin, setErrorLogin] = useState('');
   const [juntadas, setJuntadas] = useState<any[]>([]);
   const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Estados Formulario
   const [nuevoTitulo, setNuevoTitulo] = useState('');
   const [fechaSel, setFechaSel] = useState(''); 
   const [horaSel, setHoraSel] = useState(''); 
   const [esSedeFija, setEsSedeFija] = useState(true);
-  const [sedeFija, setSedeFija] = useState('Casa de Tomás');
+  const [sedeFija, setSedeFija] = useState('Casa de Tomas');
   const [candidatosSede, setCandidatosSede] = useState<string[]>([]);
   const [tagsSel, setTagsSel] = useState<string[]>([]);
   const [notas, setNotas] = useState('');
 
-  const formatearFechaDisplay = (fechaStr: string) => {
-    if (!fechaStr) return '';
-    const [y, m, d] = fechaStr.split('-');
-    const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
-    const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    return `${dias[dateObj.getDay()]} ${d} de ${meses[dateObj.getMonth()]}`;
-  };
-
-  const calcularTiempoRestante = (timestamp: number) => {
-    if (!timestamp) return 'CALCULANDO... ⏳';
-
-    const ahora = new Date().getTime();
-    const diffMs = timestamp - ahora;
-
-    if (isNaN(diffMs)) return 'CALCULANDO... ⏳';
-    
-    if (diffMs < 0) return 'YA ARRANCÓ (O PASÓ) 🏃‍♂️';
-
-    const horas = Math.floor(diffMs / (1000 * 60 * 60));
-    const dias = Math.floor(horas / 24);
-
-    if (dias > 1) return `FALTAN ${dias} DÍAS ⏳`;
-    if (dias === 1) return `FALTA 1 DÍA ⏳`;
-    if (horas > 1) return `FALTAN ${horas} HORAS ⏰`;
-    if (horas === 1) return `FALTA 1 HORA ⏰`;
-    return '¡EN UN RATO! 🔥';
-  };
-
-  const handleHoraChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value.replace(/\D/g, ''); 
-    if (val.length > 2) {
-      val = val.substring(0, 2) + ':' + val.substring(2, 4);
+  // 1. Cargar datos al iniciar
+  useEffect(() => {
+    async function cargarDatos() {
+      const { data, error } = await supabase
+        .from('juntadas')
+        .select('*')
+        .order('id', { ascending: false });
+      
+      if (data) setJuntadas(data);
+      setLoading(false);
     }
-    setHoraSel(val);
-  };
+    cargarDatos();
+  }, []);
 
-  const intentarLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nombreSeleccionado) return setErrorLogin('Falta elegir quién sos.');
-    if (passwordInput === '123') {
-      setUsuarioLogueado(nombreSeleccionado);
-      setErrorLogin('');
-    } else { setErrorLogin('Contraseña incorrecta'); }
-  };
-
-  const publicar = () => {
+  // 2. Publicar en la nube
+  const publicar = async () => {
     if (!nuevoTitulo.trim() || !fechaSel || !horaSel.trim()) return alert("Completá título, fecha y hora.");
     
     const [y, m, d] = fechaSel.split('-');
@@ -116,7 +105,6 @@ export default function Home() {
     const targetDate = new Date(Number(y), Number(m) - 1, Number(d), Number(h), Number(min));
 
     const nueva = {
-      id: Date.now(),
       creador: usuarioLogueado,
       titulo: nuevoTitulo,
       fechaDisplay: formatearFechaDisplay(fechaSel),
@@ -131,57 +119,136 @@ export default function Home() {
       dudosos: [],
       rechazados: []
     };
-    setJuntadas([nueva, ...juntadas]);
-    setMostrandoFormulario(false);
+
+    const { data, error } = await supabase.from('juntadas').insert([nueva]).select();
+
+    if (!error && data) {
+      setJuntadas([data[0], ...juntadas]);
+      setMostrandoFormulario(false);
+      resetForm();
+    } else {
+      setJuntadas([nueva, ...juntadas]);
+      setMostrandoFormulario(false);
+      resetForm();
+    }
+  };
+
+  // 3. Votar sede en la nube
+  const votarSede = async (juntadaId: number, casaNombre: string) => {
+    const j = juntadas.find(item => item.id === juntadaId);
+    if (!j || j.esSedeFija) return;
+
+    const nuevosCandidatos = j.candidatos.map((c: any) => {
+      const votantesFiltrados = (c.votantes || []).filter((v: string) => v !== usuarioLogueado);
+      if (c.nombre === casaNombre) votantesFiltrados.push(usuarioLogueado);
+      return { ...c, votantes: votantesFiltrados };
+    });
+
+    const { error } = await supabase.from('juntadas').update({ candidatos: nuevosCandidatos }).eq('id', juntadaId);
+    if (!error) setJuntadas(prev => prev.map(item => item.id === juntadaId ? { ...item, candidatos: nuevosCandidatos } : item));
+  };
+
+  // 4. Cambiar asistencia en la nube
+  const toggleAsistencia = async (juntadaId: number, estado: 'voy' | 'nose' | 'paso') => {
+    const j = juntadas.find(item => item.id === juntadaId);
+    if (!j) return;
+
+    let confirmados = (j.confirmados || []).filter((u: string) => u !== usuarioLogueado);
+    let dudosos = (j.dudosos || []).filter((u: string) => u !== usuarioLogueado);
+    let rechazados = (j.rechazados || []).filter((u: string) => u !== usuarioLogueado);
+    let nuevosCandidatos = j.candidatos;
+
+    if (estado === 'voy') confirmados.push(usuarioLogueado);
+    if (estado === 'nose') dudosos.push(usuarioLogueado);
+    if (estado === 'paso') {
+      rechazados.push(usuarioLogueado);
+      if (!j.esSedeFija && j.candidatos) {
+        nuevosCandidatos = j.candidatos.map((c: any) => ({
+          ...c, votantes: (c.votantes || []).filter((v: string) => v !== usuarioLogueado)
+        }));
+      }
+    }
+
+    const { error } = await supabase.from('juntadas').update({ confirmados, dudosos, rechazados, candidatos: nuevosCandidatos }).eq('id', juntadaId);
+    if (!error) setJuntadas(prev => prev.map(item => item.id === juntadaId ? { ...item, confirmados, dudosos, rechazados, candidatos: nuevosCandidatos } : item));
+  };
+
+  // 5. Eliminar de la nube
+  const eliminarJuntada = async (juntadaId: number) => {
+    if (!window.confirm("¿Seguro que querés eliminar esta juntada?")) return;
+    const { error } = await supabase.from('juntadas').delete().eq('id', juntadaId);
+    if (!error) setJuntadas(prev => prev.filter(j => j.id !== juntadaId));
+  };
+
+  // --- COMPARTIR POR WHATSAPP (SOLUCIÓN EMOJIS CON CÓDIGOS) ---
+  const compartirWhatsApp = (j: any) => {
+    const url = window.location.origin; 
     
+    // Usamos los códigos nativos para evitar que el editor los rompa al guardar
+    const champ = String.fromCodePoint(0x1F37E);
+    const cal = String.fromCodePoint(0x1F4C6);
+    const reloj = String.fromCodePoint(0x23F0);
+    const casa = String.fromCodePoint(0x1F3E0);
+    const dedo = String.fromCodePoint(0x1F449);
+    const urna = String.fromCodePoint(0x1F5F3, 0xFE0F);
+
+    const sede = j.esSedeFija ? j.sedeFinal : `A votar en la app ${urna}`;
+    
+    const mensaje = `${champ} *PROPUESTA JUNTADA:* ${j.titulo} ${champ}\n${cal} *DÍA:* ${j.fechaDisplay}\n${reloj} *HORA:* ${j.horaDisplay}\n${casa} *SEDE:* ${sede}\n\n${dedo} *Confirmá tu asistencia o votá la sede acá:* ${url}`;
+    
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  const resetForm = () => {
     setNuevoTitulo(''); setFechaSel(''); setHoraSel(''); setTagsSel([]); setCandidatosSede([]); setEsSedeFija(true); setNotas('');
   };
 
-  const votarSede = (juntadaId: number, casaNombre: string) => {
-    setJuntadas(prev => prev.map(j => {
-      if (j.id === juntadaId && !j.esSedeFija) {
-        const nuevosCandidatos = j.candidatos.map((c: any) => {
-          const votantesFiltrados = (c.votantes || []).filter((v: string) => v !== usuarioLogueado);
-          if (c.nombre === casaNombre) votantesFiltrados.push(usuarioLogueado);
-          return { ...c, votantes: votantesFiltrados };
-        });
-        return { ...j, candidatos: nuevosCandidatos };
-      }
-      return j;
-    }));
+  const formatearFechaDisplay = (fechaStr: string) => {
+    if (!fechaStr) return '';
+    const [y, m, d] = fechaStr.split('-');
+    const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
+    const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    return `${dias[dateObj.getDay()]} ${d} de ${meses[dateObj.getMonth()]}`;
   };
 
-  const toggleAsistencia = (juntadaId: number, estado: 'voy' | 'nose' | 'paso') => {
-    setJuntadas(prev => prev.map(j => {
-      if (j.id === juntadaId) {
-        let confirmados = (j.confirmados || []).filter((u: string) => u !== usuarioLogueado);
-        let dudosos = (j.dudosos || []).filter((u: string) => u !== usuarioLogueado);
-        let rechazados = (j.rechazados || []).filter((u: string) => u !== usuarioLogueado);
-        let nuevosCandidatos = j.candidatos;
-
-        if (estado === 'voy') confirmados.push(usuarioLogueado);
-        if (estado === 'nose') dudosos.push(usuarioLogueado);
-        if (estado === 'paso') {
-          rechazados.push(usuarioLogueado);
-          // Si pasa, retiramos su voto de la sede para que la matemática sea exacta
-          if (!j.esSedeFija && j.candidatos) {
-            nuevosCandidatos = j.candidatos.map((c: any) => ({
-              ...c,
-              votantes: (c.votantes || []).filter((v: string) => v !== usuarioLogueado)
-            }));
-          }
-        }
-
-        return { ...j, confirmados, dudosos, rechazados, candidatos: nuevosCandidatos };
-      }
-      return j;
-    }));
+  const calcularTiempoRestante = (timestamp: number) => {
+    if (!timestamp) return 'CALCULANDO... ⏳';
+    const ahora = new Date().getTime();
+    const diffMs = timestamp - ahora;
+    if (diffMs < 0) return 'YA ARRANCÓ (O PASÓ) 🏃‍♂️';
+    const horas = Math.floor(diffMs / (1000 * 60 * 60));
+    const dias = Math.floor(horas / 24);
+    if (dias > 1) return `FALTAN ${dias} DÍAS ⏳`;
+    if (dias === 1) return `MAÑANA 📆 `;
+    if (horas >= 1) return `FALTAN ${horas} HORAS ⏰`;
+    return '¡EN UN RATO! 🔥';
   };
 
-  const eliminarJuntada = (juntadaId: number) => {
-    if (!window.confirm("¿Seguro que querés eliminar esta juntada?")) return;
-    setJuntadas(prev => prev.filter(j => j.id !== juntadaId));
+  const handleHoraChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, ''); 
+    if (val.length > 2) val = val.substring(0, 2) + ':' + val.substring(2, 4);
+    setHoraSel(val);
   };
+
+  const intentarLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nombreSeleccionado) return setErrorLogin('Falta elegir quién sos.');
+    
+    if (CREDENCIALES[nombreSeleccionado] === passwordInput) {
+      setUsuarioLogueado(nombreSeleccionado);
+      setErrorLogin('');
+    } else { 
+      setErrorLogin('Contraseña incorrecta'); 
+    }
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-[#FDFDFF] flex items-center justify-center">
+      <div className="animate-spin text-violet-600 text-2xl">⏳</div>
+    </div>
+  );
 
   return (
     <>
@@ -213,7 +280,7 @@ export default function Home() {
             <div className="space-y-5">
               <div>
                 <label className="text-[10px] font-bold text-slate-500 ml-1 mb-1 block">¿Qué se hace?</label>
-                <input type="text" placeholder="Ej: Asado y Play" className={`${ESTETICA_FORMULARIO.input} ${RADIO_GENERAL}`} value={nuevoTitulo} onChange={e => setNuevoTitulo(e.target.value)} />
+                <input type="text" placeholder="EJ: Asadito en lo de Uli" className={`${ESTETICA_FORMULARIO.input} ${RADIO_GENERAL}`} value={nuevoTitulo} onChange={e => setNuevoTitulo(e.target.value)} />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -239,18 +306,26 @@ export default function Home() {
                 
                 <div className="mt-1">
                   {esSedeFija ? (
-                    <select className={`${ESTETICA_FORMULARIO.input} ${RADIO_GENERAL} bg-white cursor-pointer`} value={sedeFija} onChange={e => setSedeFija(e.target.value)}>
-                      {AMIGOS.map(a => <option key={a} value={`Casa de ${a}`}>Casa de {a}</option>)}
-                    </select>
+                    <div className="relative">
+                      <select className={`${ESTETICA_FORMULARIO.input} ${RADIO_GENERAL} bg-white appearance-none cursor-pointer pr-8`} value={sedeFija} onChange={e => setSedeFija(e.target.value)}>
+                        {AMIGOS.map(a => <option key={a} value={`Casa de ${a}`}>Casa de {a}</option>)}
+                      </select>
+                      <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                        <span className="text-slate-400 text-[10px]">▼</span>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="pt-1">
-                      <p className="text-[10px] font-bold text-violet-600 mb-2 ml-1">Seleccionar candidatas:</p>
-                      <div className="flex flex-wrap gap-1.5">
+                    <div className="pt-2 pb-3 bg-slate-50 px-3 border border-slate-100 rounded-2xl">
+                      <p className="text-[9px] font-black text-slate-400 mb-3 text-center uppercase tracking-widest">Seleccionar casas candidatas:</p>
+                      <div className="flex flex-wrap justify-center gap-2">
                         {AMIGOS.map(a => (
-                          <button key={a} onClick={() => setCandidatosSede(prev => prev.includes(a) ? prev.filter(c => c !== a) : [...prev, a])}
-                            className={`px-3 py-2 ${RADIO_GENERAL} text-[10px] font-black transition-all border-2 ${candidatosSede.includes(a) ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-400 border-slate-100'}`}>
-                            CASA DE {a.toUpperCase()}
-                          </button>
+                          <motion.button 
+                            key={a}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => setCandidatosSede(prev => prev.includes(a) ? prev.filter(c => c !== a) : [...prev, a])}
+                            className={`px-3 py-1.5 rounded-full text-[9px] font-black transition-all border-2 ${candidatosSede.includes(a) ? 'bg-violet-600 text-white border-violet-600 shadow-md shadow-violet-200' : 'bg-white text-slate-400 border-slate-200 hover:border-violet-300'}`}>
+                            {a.toUpperCase()}
+                          </motion.button>
                         ))}
                       </div>
                     </div>
@@ -260,7 +335,7 @@ export default function Home() {
 
               <div>
                 <label className="text-[10px] font-bold text-slate-500 ml-1 mb-1 block">Notas (Opcional)</label>
-                <input type="text" placeholder="Ej: Traigan hielo, no se puede hacer ruido..." className={`${ESTETICA_FORMULARIO.input} ${RADIO_GENERAL}`} value={notas} onChange={e => setNotas(e.target.value)} />
+                <input type="text" placeholder="EJ: Traigan hielo, falta coca..." className={`${ESTETICA_FORMULARIO.input} ${RADIO_GENERAL}`} value={notas} onChange={e => setNotas(e.target.value)} />
               </div>
 
               <div>
@@ -300,23 +375,21 @@ export default function Home() {
               ) : (
                 <motion.div variants={varStaggerContainer} initial="hidden" animate="visible" className="space-y-6">
                   <div className="flex justify-between items-end mb-2 px-1">
-                    <h2 className="text-2xl font-black text-slate-950 tracking-tighter uppercase">Cartelera</h2>
+                    <h2 className="text-2xl font-black text-slate-950 tracking-tighter uppercase">PROPUESTAS</h2>
                     <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setMostrandoFormulario(true)} className={`bg-violet-600 text-white font-black hover:bg-violet-700 transition-all uppercase tracking-widest flex items-center justify-center text-[10px] px-4 h-8 ${RADIO_GENERAL}`}>+ NUEVA</motion.button>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                    {juntadas.map(j => {
+                    {juntadas.map((j, index) => {
                       const voyYo = (j.confirmados || []).includes(usuarioLogueado);
                       const dudaYo = (j.dudosos || []).includes(usuarioLogueado);
                       const pasoYo = (j.rechazados || []).includes(usuarioLogueado);
                       const cantConfirmados = j.confirmados?.length || 0;
 
-                      // --- LÓGICA DE PERMISOS PARA BORRAR ---
                       const esCreador = usuarioLogueado === j.creador;
-                      const esAdminTomas = usuarioLogueado === 'Tomás';
+                      const esAdminTomas = usuarioLogueado === 'Tomas';
                       const puedeEliminar = esCreador || esAdminTomas;
 
-                      // --- LÓGICA MATEMÁTICA: ¿ES IRREMONTABLE? ---
                       const totalVotosSede = j.candidatos ? j.candidatos.reduce((acc: number, c: any) => acc + (c.votantes?.length || 0), 0) : 0;
                       const totalPosiblesVotantes = AMIGOS.length - (j.rechazados?.length || 0);
                       const votosRestantes = Math.max(0, totalPosiblesVotantes - totalVotosSede);
@@ -329,7 +402,6 @@ export default function Home() {
                         const maxVotos = ordenados[0]?.votantes?.length || 0;
                         const segundoMaxVotos = ordenados.length > 1 ? (ordenados[1]?.votantes?.length || 0) : 0;
 
-                        // Si el líder tiene votos y la diferencia es matemáticamente imposible de superar
                         if (maxVotos > 0 && maxVotos > (segundoMaxVotos + votosRestantes)) {
                           sedeConfirmada = ordenados[0].nombre;
                           esIrremontable = true;
@@ -339,7 +411,7 @@ export default function Home() {
                       return (
                         <motion.div 
                           layout
-                          key={j.id} 
+                          key={j.id || index}
                           variants={varFadeInUp}
                           className={`relative ${ESTETICA_TARJETA.contenedor}`}
                         >
@@ -381,7 +453,7 @@ export default function Home() {
                                 </div>
                                 {esIrremontable && (
                                   <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md w-fit uppercase tracking-widest border border-emerald-200">
-                                    Votación cerrada (Mayoría irreversible)
+                                    Votación cerrada por mayoría
                                   </span>
                                 )}
                               </div>
@@ -462,22 +534,33 @@ export default function Home() {
                             {j.rechazados?.length > 0 && <p className="text-[10px] text-slate-700">❌ <span className="font-bold">No pueden:</span> {j.rechazados.join(', ')}</p>}
                           </div>
 
-                          <div className="grid grid-cols-3 gap-2 mt-auto">
+                          <div className="mt-auto space-y-2">
+                            <div className="grid grid-cols-3 gap-2">
+                              <motion.button 
+                                whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }}
+                                onClick={() => toggleAsistencia(j.id, 'voy')}
+                                className={`h-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center transition-all ${RADIO_GENERAL} ${voyYo ? 'bg-green-500 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                              >VOY</motion.button>
+                              <motion.button 
+                                whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }}
+                                onClick={() => toggleAsistencia(j.id, 'nose')}
+                                className={`h-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center transition-all ${RADIO_GENERAL} ${dudaYo ? 'bg-yellow-500 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                              >NO SÉ</motion.button>
+                              <motion.button 
+                                whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }}
+                                onClick={() => toggleAsistencia(j.id, 'paso')}
+                                className={`h-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center transition-all ${RADIO_GENERAL} ${pasoYo ? 'bg-red-500 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                              >NO PUEDO</motion.button>
+                            </div>
+                            
                             <motion.button 
                               whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }}
-                              onClick={() => toggleAsistencia(j.id, 'voy')}
-                              className={`h-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center transition-all ${RADIO_GENERAL} ${voyYo ? 'bg-green-500 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                            >VOY</motion.button>
-                            <motion.button 
-                              whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }}
-                              onClick={() => toggleAsistencia(j.id, 'nose')}
-                              className={`h-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center transition-all ${RADIO_GENERAL} ${dudaYo ? 'bg-yellow-500 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                            >NO SÉ</motion.button>
-                            <motion.button 
-                              whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }}
-                              onClick={() => toggleAsistencia(j.id, 'paso')}
-                              className={`h-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center transition-all ${RADIO_GENERAL} ${pasoYo ? 'bg-red-500 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                            >NO PUEDO</motion.button>
+                              onClick={() => compartirWhatsApp(j)}
+                              className={`w-full h-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${RADIO_GENERAL} bg-green-500 text-white shadow-md shadow-green-200 hover:bg-green-600`}
+                            >
+                              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.305-.88-.653-1.473-1.46-1.646-1.757-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51h-.57c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                              AVISAR POR WHATSAPP
+                            </motion.button>
                           </div>
 
                         </motion.div>
@@ -492,4 +575,4 @@ export default function Home() {
       )}
     </>
   );
-} // v2 final
+}
