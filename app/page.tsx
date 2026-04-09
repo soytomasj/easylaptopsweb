@@ -122,12 +122,11 @@ export default function Home() {
 
     const { data, error } = await supabase.from('juntadas').insert([nueva]).select();
 
-    if (!error && data) {
+    // SI HAY ERROR, NOS TIRA UNA ALERTA EN LA CARA
+    if (error) {
+      alert("ERROR DE SUPABASE: " + error.message);
+    } else if (data) {
       setJuntadas([data[0], ...juntadas]);
-      setMostrandoFormulario(false);
-      resetForm();
-    } else {
-      setJuntadas([nueva, ...juntadas]);
       setMostrandoFormulario(false);
       resetForm();
     }
