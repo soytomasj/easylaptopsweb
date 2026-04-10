@@ -60,8 +60,8 @@ export default function Home() {
   const [nuevaPassword, setNuevaPassword] = useState('');
   const [nuevaFoto, setNuevaFoto] = useState('');
 
-  // Estado para la excusa temporal
-  const [excusaTemp, setExcusaTemp] = useState<{ id: number, estado: 'nose' | 'paso' } | null>(null);
+  // Estado para la excusa temporal (CORREGIDO ACÁ PARA TYPESCRIPT)
+  const [excusaTemp, setExcusaTemp] = useState<{ id: number, estado: 'voy' | 'nose' | 'paso' } | null>(null);
 
   // Estados Formulario
   const [nuevoTitulo, setNuevoTitulo] = useState('');
