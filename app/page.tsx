@@ -494,8 +494,8 @@ export default function Home() {
                     {juntadas.map((j, index) => {
                       
                       // LÓGICA VISUAL INMEDIATA
-                      const isTempNose = excusaTemp?.id === j.id && excusaTemp.estado === 'nose';
-                      const isTempPaso = excusaTemp?.id === j.id && excusaTemp.estado === 'paso';
+                      const isTempNose = excusaTemp?.id === j.id && excusaTemp?.estado === 'nose';
+                      const isTempPaso = excusaTemp?.id === j.id && excusaTemp?.estado === 'paso';
                       const isTempActive = excusaTemp?.id === j.id;
 
                       const voyYo = !isTempActive && (j.confirmados || []).includes(usuarioLogueado);
