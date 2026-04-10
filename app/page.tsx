@@ -411,7 +411,7 @@ export default function Home() {
     const comentariosActuales = j.excusas || [];
     const misComentarios = comentariosActuales.filter((c: any) => c.usuario === usuarioLogueado);
 
-    if (misComentarios.length >= 3) {
+    if (misComentarios.length >= 6) {
       alert("Límite alcanzado: podés dejar un máximo de 3 comentarios por juntada.");
       return;
     }
@@ -813,7 +813,7 @@ export default function Home() {
                       }
 
                       const misComentarios = (j.excusas || []).filter((c: any) => c.usuario === usuarioLogueado);
-                      const puedeComentar = misComentarios.length < 3;
+                      const puedeComentar = misComentarios.length < 6;
 
                       return (
                         <motion.div 
