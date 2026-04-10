@@ -60,7 +60,7 @@ export default function Home() {
   const [nuevaPassword, setNuevaPassword] = useState('');
   const [nuevaFoto, setNuevaFoto] = useState('');
 
-  // Estado para la excusa temporal (CORREGIDO ACÁ PARA TYPESCRIPT)
+  // Estado para la excusa temporal
   const [excusaTemp, setExcusaTemp] = useState<{ id: number, estado: 'voy' | 'nose' | 'paso' } | null>(null);
 
   // Estados Formulario
@@ -635,10 +635,22 @@ export default function Home() {
                             })}
                           </div>
 
-                          {/* SECCIÓN ASISTENCIA CLÁSICA DE TEXTO (SIN FOTOS ACÁ ABAJO) */}
+                          {/* SECCIÓN ASISTENCIA CLÁSICA DE TEXTO CON TIPITOS ARRIBA */}
                           <div className={`bg-slate-50 p-3 ${RADIO_GENERAL} border border-slate-100 mb-4`}>
                             <div className="flex justify-between items-end border-b border-slate-200 pb-2 mb-2">
                               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Asistencia:</p>
+                              
+                              {/* VOLVIERON LOS TIPITOS */}
+                              <div className="flex gap-0.5">
+                                {Array.from({ length: AMIGOS_FALLBACK.length }).map((_, i) => (
+                                  <span 
+                                    key={i} 
+                                    className={`text-sm transition-all ${i < cantConfirmados ? 'text-violet-600 opacity-100' : 'text-slate-400 opacity-30 grayscale'}`}
+                                  >
+                                    👤
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                             
                             {(!j.confirmados?.length && !j.dudosos?.length && !j.rechazados?.length) && <p className="text-[10px] text-slate-400 italic">Nadie respondió todavía</p>}
@@ -685,7 +697,7 @@ export default function Home() {
                               >NO PUEDO</motion.button>
                             </div>
 
-                            {/* --- INPUT TEMPORAL DE EXCUSA --- */}
+                            {/* --- INPUT TEMPORAL DE EXCUSA CON BOTÓN DE ENVIAR --- */}
                             <AnimatePresence>
                               {excusaTemp?.id === j.id && (
                                 <motion.div 
@@ -695,18 +707,32 @@ export default function Home() {
                                     transition={{ duration: 0.15 }}
                                     className="pt-2 overflow-hidden"
                                 >
-                                  <input 
-                                    type="text" 
-                                    autoFocus
-                                    placeholder="Explicá por qué (ej: Laburo, mi novia no me deja...)" 
-                                    className="w-full h-10 px-4 bg-violet-50 border border-violet-200 rounded-xl text-[10px] font-bold text-slate-800 outline-none focus:ring-2 focus:ring-violet-300"
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && excusaTemp?.estado) {
-                                        toggleAsistencia(j.id, excusaTemp.estado, (e.target as HTMLInputElement).value);
-                                      }
-                                    }}
-                                  />
-                                  <p className="text-[8px] text-violet-500 mt-1 ml-1 font-black uppercase tracking-widest">Presioná ENTER para enviar</p>
+                                  <div className="relative w-full">
+                                    <input 
+                                      id={`excusa-${j.id}`}
+                                      type="text" 
+                                      autoFocus
+                                      placeholder="Explicá por qué (ej: Laburo, mi novia...)" 
+                                      className="w-full h-10 pl-4 pr-12 bg-violet-50 border border-violet-200 rounded-xl text-[10px] font-bold text-slate-800 outline-none focus:ring-2 focus:ring-violet-300"
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && excusaTemp?.estado) {
+                                          toggleAsistencia(j.id, excusaTemp.estado, (e.target as HTMLInputElement).value);
+                                        }
+                                      }}
+                                    />
+                                    <button 
+                                      onClick={() => {
+                                        const input = document.getElementById(`excusa-${j.id}`) as HTMLInputElement;
+                                        if (input && excusaTemp?.estado) {
+                                          toggleAsistencia(j.id, excusaTemp.estado, input.value);
+                                        }
+                                      }}
+                                      className="absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 bg-violet-600 hover:bg-violet-700 text-white rounded-lg flex items-center justify-center shadow-md active:scale-95 transition-all"
+                                    >
+                                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                                    </button>
+                                  </div>
+                                  <p className="text-[8px] text-violet-500 mt-1 ml-1 font-black uppercase tracking-widest">Presioná ENTER o la flecha para enviar</p>
                                 </motion.div>
                               )}
                             </AnimatePresence>
