@@ -10,13 +10,13 @@ import { supabase } from './supabase';
 const RADIO_GENERAL = "rounded-2xl"; 
 
 const ESTETICA_LOGIN = (isDark: boolean) => ({
-  contenedor: `w-full max-w-[300px] p-6 ${RADIO_GENERAL} transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800 shadow-none' : 'bg-white shadow-lg shadow-slate-200/40 border-slate-100'} border`,
+  contenedor: `w-full max-w-[300px] p-6 ${RADIO_GENERAL} transition-colors duration-300 ${isDark ? 'bg-slate-900 border-slate-800 shadow-none' : 'bg-white shadow-lg shadow-slate-200/40 border-slate-100'} border`,
   input: `w-full h-10 px-4 transition-all text-xs font-bold outline-none focus:ring-2 ${isDark ? 'bg-slate-800 border-slate-700 focus:ring-violet-500 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 focus:ring-violet-200 text-slate-800 placeholder:text-slate-400'} border`,
   boton: `font-black active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center text-xs w-full h-10 mt-1 ${RADIO_GENERAL} ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-600 text-white shadow-md shadow-violet-200 hover:bg-violet-700'}`
 });
 
 const ESTETICA_FORMULARIO = (isDark: boolean) => ({
-  contenedor: `max-w-[360px] mx-auto p-6 ${RADIO_GENERAL} transition-all duration-300 border ${isDark ? 'bg-slate-900 shadow-none border-slate-800' : 'bg-white shadow-lg shadow-slate-200/40 border-slate-100'}`,
+  contenedor: `max-w-[360px] mx-auto p-6 ${RADIO_GENERAL} transition-colors duration-300 border ${isDark ? 'bg-slate-900 shadow-none border-slate-800' : 'bg-white shadow-lg shadow-slate-200/40 border-slate-100'}`,
   input: `w-full h-10 px-4 transition-all text-xs font-bold outline-none focus:ring-2 ${isDark ? 'bg-slate-800 border-slate-700 focus:ring-violet-500 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 focus:ring-violet-200 text-slate-800 placeholder:text-slate-400'} border`,
   botonPrincipal: `font-black active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center text-xs w-full h-12 mt-2 ${RADIO_GENERAL} ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-600 text-white shadow-md shadow-violet-200 hover:bg-violet-700'}`,
   btnOpcionInactivo: `flex-1 h-10 ${RADIO_GENERAL} text-[10px] font-black transition-all border-2 ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-400 border-slate-100'}`,
@@ -24,7 +24,7 @@ const ESTETICA_FORMULARIO = (isDark: boolean) => ({
 });
 
 const ESTETICA_TARJETA = (isDark: boolean) => ({
-  contenedor: `p-6 ${RADIO_GENERAL} border flex flex-col transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800 shadow-none' : 'bg-white shadow-lg shadow-slate-200/40 border-slate-100'}`,
+  contenedor: `p-6 ${RADIO_GENERAL} border flex flex-col transition-colors duration-300 ${isDark ? 'bg-slate-900 border-slate-800 shadow-none' : 'bg-white shadow-lg shadow-slate-200/40 border-slate-100'}`,
 });
 
 const AMIGOS_FALLBACK = ['Tomas', 'Koke', 'Tito', 'Uli', 'Pablo', 'Oscarcito'];
@@ -41,15 +41,6 @@ const TAGS_DISPONIBLES_DISCORD = [
 ];
 
 const TODOS_LOS_TAGS = [...TAGS_DISPONIBLES_IRL, ...TAGS_DISPONIBLES_DISCORD];
-
-const varFadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } }
-};
-
-const varStaggerContainer = {
-  visible: { transition: { staggerChildren: 0.05 } }
-};
 
 export default function Home() {
   const [usuarioLogueado, setUsuarioLogueado] = useState<string | null>(null);
@@ -84,14 +75,22 @@ export default function Home() {
   const [nuevoTitulo, setNuevoTitulo] = useState('');
   const [fechaSel, setFechaSel] = useState(''); 
   const [horaSel, setHoraSel] = useState(''); 
-  const [esSedeFija, setEsSedeFija] = useState(true);
+  
+  // Control de la sede
+  const [opcionSede, setOpcionSede] = useState<'FIJA' | 'VOTACION' | 'CUSTOM'>('FIJA');
   const [sedeFija, setSedeFija] = useState('Casa de Tomas');
+  const [sedePersonalizadaInput, setSedePersonalizadaInput] = useState('');
   const [candidatosSede, setCandidatosSede] = useState<string[]>([]);
+  
   const [tagsSel, setTagsSel] = useState<string[]>([]);
   const [notas, setNotas] = useState('');
   
   const [imagenJuntada, setImagenJuntada] = useState<File | null>(null);
   const [imagenJuntadaPreview, setImagenJuntadaPreview] = useState<string | null>(null);
+
+  // Widget Discord
+  const [discordData, setDiscordData] = useState<any>(null);
+  const [discordLoading, setDiscordLoading] = useState(true);
 
   // 1. INICIALIZACIÓN BÁSICA (Solo corre al montar la página)
   useEffect(() => {
@@ -104,7 +103,7 @@ export default function Home() {
     if (userGuardado) setUsuarioLogueado(userGuardado);
   }, []);
 
-  // 2. CARGA DE DATOS AISLADA (Corre una vez y no se vuelve a disparar por el login)
+  // 2. CARGA DE DATOS AISLADA (Supabase y Discord)
   useEffect(() => {
     async function cargarDatos() {
       const [resJuntadas, resUsuarios] = await Promise.all([
@@ -122,9 +121,49 @@ export default function Home() {
     const subJuntadas = supabase.channel('juntadas_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'juntadas' }, () => cargarDatos()).subscribe();
     const subUsuarios = supabase.channel('usuarios_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios' }, () => cargarDatos()).subscribe();
 
+    // Fetch de Discord optimizado con anti-caché
+    const fetchDiscord = async () => {
+      // Usamos el timestamp para obligar al navegador a no usar la versión guardada en caché
+      const noCacheTimestamp = new Date().getTime();
+      const discordUrl = `https://discord.com/api/guilds/730941554537005137/widget.json?t=${noCacheTimestamp}`;
+      
+      try {
+        const res = await fetch(discordUrl);
+        if (res.ok) {
+          const data = await res.json();
+          setDiscordData(data);
+        } else if (res.status === 403) {
+          setDiscordData({ errorMensaje: 'FALTA ACTIVAR EL WIDGET EN LOS AJUSTES DE DISCORD' });
+        } else {
+          setDiscordData({ errorMensaje: `ERROR DE DISCORD: ${res.status}` });
+        }
+      } catch (error) {
+        console.error('Error fetching Discord data', error);
+        // Puente para adblockers o CORS
+        try {
+          const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(discordUrl)}`);
+          if (proxyRes.ok) {
+            const proxyData = await proxyRes.json();
+            setDiscordData(proxyData);
+          } else {
+             setDiscordData({ errorMensaje: 'BLOQUEADO POR EL NAVEGADOR (ADBLOCK)' });
+          }
+        } catch(e) {
+          setDiscordData({ errorMensaje: 'ERROR DE CONEXIÓN' });
+        }
+      } finally {
+        setDiscordLoading(false);
+      }
+    };
+    
+    fetchDiscord();
+    // Refresco más veloz: cada 15 segundos para que sea casi instantáneo
+    const discordInterval = setInterval(fetchDiscord, 15000);
+
     return () => {
       supabase.removeChannel(subJuntadas);
       supabase.removeChannel(subUsuarios);
+      clearInterval(discordInterval);
     };
   }, []); 
 
@@ -299,10 +338,15 @@ export default function Home() {
     const mins = String(date.getMinutes()).padStart(2, '0');
     setHoraSel(`${hh}:${mins}`);
     
-    setEsSedeFija(j.esSedeFija);
-    if (j.esSedeFija) {
+    // Asignación de sede para el modo edición
+    if (j.esSedePersonalizada) {
+        setOpcionSede('CUSTOM');
+        setSedePersonalizadaInput(j.sedeFinal || '');
+    } else if (j.esSedeFija) {
+        setOpcionSede('FIJA');
         setSedeFija(j.sedeFinal || 'Casa de Tomas');
     } else {
+        setOpcionSede('VOTACION');
         setCandidatosSede(j.candidatos ? j.candidatos.map((c: any) => c.nombre) : []);
     }
     
@@ -315,7 +359,18 @@ export default function Home() {
 
   const publicar = async () => {
     if (!nuevoTitulo.trim() || !fechaSel || !horaSel.trim()) return alert("Completá título, fecha y hora.");
+    if (tipoJuntada === 'IRL' && opcionSede === 'CUSTOM' && !sedePersonalizadaInput.trim()) return alert("Ingresá la sede personalizada.");
     
+    // Validación de imagen obligatoria
+    if (!juntadaEnEdicion && !imagenJuntada) {
+        return alert("¡Tenés que agregar una foto de portada sí o sí!");
+    } else if (juntadaEnEdicion) {
+        const jActual = juntadas.find(x => x.id === juntadaEnEdicion);
+        if (!imagenJuntada && !jActual?.imagenUrl) {
+            return alert("¡Tenés que agregar una foto de portada sí o sí!");
+        }
+    }
+
     setIsUploading(true);
 
     let finalImageUrl = null;
@@ -331,11 +386,15 @@ export default function Home() {
     const [h, min] = horaSel.includes(':') ? horaSel.split(':') : [horaSel, '00'];
     const targetDate = new Date(Number(y), Number(m) - 1, Number(d), Number(h), Number(min));
 
+    const esSedeFija = opcionSede === 'FIJA';
+    const esSedePersonalizada = opcionSede === 'CUSTOM';
+    const sedeFinalDeterminada = tipoJuntada === 'DISCORD' ? 'Discord' : (esSedeFija ? sedeFija : (esSedePersonalizada ? sedePersonalizadaInput.trim() : null));
+
     if (juntadaEnEdicion) {
         const jActual = juntadas.find(x => x.id === juntadaEnEdicion);
         
         let nuevosCandidatos = [];
-        if (tipoJuntada === 'IRL' && !esSedeFija) {
+        if (tipoJuntada === 'IRL' && opcionSede === 'VOTACION') {
             const oldCandidatos = jActual?.candidatos || [];
             nuevosCandidatos = candidatosSede.map(c => {
                 const existing = oldCandidatos.find((old: any) => old.nombre === c);
@@ -350,7 +409,8 @@ export default function Home() {
             horaDisplay: `${horaSel} PM`,
             timestamp: targetDate.getTime(),
             esSedeFija: tipoJuntada === 'DISCORD' ? true : esSedeFija,
-            sedeFinal: tipoJuntada === 'DISCORD' ? 'Discord' : (esSedeFija ? sedeFija : null),
+            esSedePersonalizada: tipoJuntada === 'DISCORD' ? false : esSedePersonalizada,
+            sedeFinal: sedeFinalDeterminada,
             candidatos: nuevosCandidatos,
             tags: tagsSel,
             notas: notas.trim(),
@@ -372,8 +432,9 @@ export default function Home() {
             horaDisplay: `${horaSel} PM`,
             timestamp: targetDate.getTime(),
             esSedeFija: tipoJuntada === 'DISCORD' ? true : esSedeFija,
-            sedeFinal: tipoJuntada === 'DISCORD' ? 'Discord' : (esSedeFija ? sedeFija : null),
-            candidatos: (tipoJuntada === 'DISCORD' || esSedeFija) ? [] : candidatosSede.map(c => ({ nombre: c, votantes: [] })),
+            esSedePersonalizada: tipoJuntada === 'DISCORD' ? false : esSedePersonalizada,
+            sedeFinal: sedeFinalDeterminada,
+            candidatos: (tipoJuntada === 'DISCORD' || opcionSede !== 'VOTACION') ? [] : candidatosSede.map(c => ({ nombre: c, votantes: [] })),
             tags: tagsSel,
             notas: notas.trim(),
             confirmados: [usuarioLogueado],
@@ -396,7 +457,7 @@ export default function Home() {
 
   const votarSede = async (juntadaId: number, casaNombre: string) => {
     const j = juntadas.find(item => item.id === juntadaId);
-    if (!j || j.esSedeFija || j.tipo === 'DISCORD') return;
+    if (!j || j.esSedeFija || j.esSedePersonalizada || j.tipo === 'DISCORD') return;
 
     const nuevosCandidatos = j.candidatos.map((c: any) => {
       const votantesFiltrados = (c.votantes || []).filter((v: string) => v !== usuarioLogueado);
@@ -427,7 +488,7 @@ export default function Home() {
         if (estado === 'nose') dudosos.push(usuarioLogueado);
         if (estado === 'paso') {
           rechazados.push(usuarioLogueado);
-          if (!j.esSedeFija && j.tipo !== 'DISCORD' && j.candidatos) {
+          if (!j.esSedeFija && !j.esSedePersonalizada && j.tipo !== 'DISCORD' && j.candidatos) {
             nuevosCandidatos = j.candidatos.map((c: any) => ({
               ...c, votantes: (c.votantes || []).filter((v: string) => v !== usuarioLogueado)
             }));
@@ -478,7 +539,8 @@ export default function Home() {
       const msg = `🎧 *PROPUESTA DISCORD:* ${j.titulo} 👾\n📆 *DÍA:* ${j.fechaDisplay}\n⏰ *HORA:* ${j.horaDisplay}\n\n👉 *Confirmá tu asistencia:* ${url}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
     } else {
-      const sedeTexto = `\n🏠 *SEDE:* ${j.esSedeFija ? j.sedeFinal : 'A votar en la app'}`;
+      const iconoSedeWA = j.esSedePersonalizada ? '📍' : '🏠';
+      const sedeTexto = `\n${iconoSedeWA} *SEDE:* ${(j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : 'A votar en la app'}`;
       const msg = `🍾 *PROPUESTA IRL:* ${j.titulo} 🍾\n📆 *DÍA:* ${j.fechaDisplay}\n⏰ *HORA:* ${j.horaDisplay}${sedeTexto}\n\n👉 *Confirmá tu asistencia:* ${url}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
     }
@@ -500,7 +562,8 @@ export default function Home() {
     setHoraSel(''); 
     setTagsSel([]); 
     setCandidatosSede([]); 
-    setEsSedeFija(true); 
+    setOpcionSede('FIJA'); 
+    setSedePersonalizadaInput('');
     setNotas(''); 
     setImagenJuntada(null);
     setImagenJuntadaPreview(null);
@@ -570,13 +633,19 @@ export default function Home() {
     return b.id - a.id; 
   });
 
+  // Solo buscamos canales de voz que tengan gente
+  const canalesConGente = discordData?.channels?.map((c: any) => {
+    const miembros = discordData.members?.filter((m: any) => m.channel_id === c.id) || [];
+    return { ...c, members: miembros };
+  }).filter((c: any) => c.members.length > 0) || [];
+
   return (
     <>
       <div className={`min-h-screen ${isDark ? 'bg-slate-950' : 'bg-[#FDFDFF]'} transition-colors duration-300 font-sans`}>
         {/* --- VISTA LOGIN --- */}
         {!usuarioLogueado && (
           <main className="flex items-center justify-center p-4 min-h-screen">
-            <motion.div variants={varFadeInUp} initial="hidden" animate="visible" className={ESTETICA_LOGIN(isDark).contenedor}>
+            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={ESTETICA_LOGIN(isDark).contenedor}>
               <div className="flex justify-center mb-6">
                 <img src="https://i.imgur.com/5hJH1kn.png" alt="Logo" className={`h-10 w-auto object-contain ${isDark ? 'invert opacity-90' : ''}`} />
               </div>
@@ -596,7 +665,7 @@ export default function Home() {
         {/* --- VISTA FORMULARIO --- */}
         {usuarioLogueado && mostrandoFormulario && (
           <main className="p-4 pb-10 min-h-screen">
-            <motion.div variants={varFadeInUp} initial="hidden" animate="visible" className={ESTETICA_FORMULARIO(isDark).contenedor}>
+            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={ESTETICA_FORMULARIO(isDark).contenedor}>
               <button onClick={() => { setMostrandoFormulario(false); resetForm(); }} className={`text-[10px] mb-4 uppercase tracking-widest transition-colors font-bold ${isDark ? 'text-slate-500 hover:text-violet-400' : 'text-slate-400 hover:text-violet-600'}`}>← Cancelar</button>
               <h2 className={`text-xl font-black mb-5 tracking-tighter uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>{juntadaEnEdicion ? 'EDITAR PROPUESTA' : 'NUEVA PROPUESTA'}</h2>
               
@@ -609,16 +678,19 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => { setTipoJuntada('DISCORD'); setTagsSel([]); }}
-                  className={`flex-1 h-10 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest ${tipoJuntada === 'DISCORD' ? 'bg-[#5865F2] text-white shadow-md' : (isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
+                  className={`flex-1 h-10 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest flex items-center justify-center gap-1.5 ${tipoJuntada === 'DISCORD' ? 'bg-[#5865F2] text-white shadow-md' : (isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
                 >
-                  🎧 DISCORD
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 127.14 96.36" fill="currentColor" className={`w-3.5 h-3.5 ${tipoJuntada === 'DISCORD' ? 'text-white' : (isDark ? 'text-white' : 'text-[#5865F2]')}`}>
+                    <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14h0C127.86,52.43,121.56,29.1,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.31,60,73.31,53s5-12.74,11.43-12.74S96.3,46,96.19,53,91.08,65.69,84.69,65.69Z"/>
+                  </svg>
+                  DISCORD
                 </button>
               </div>
 
               <div className="space-y-5">
                 <div>
                   <label className={`text-[10px] font-bold ml-1 mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>¿Qué se hace?</label>
-                  <input type="text" placeholder={tipoJuntada === 'IRL' ? "EJ: Asadito en lo de Uli" : "EJ: Torneo de Rocket League"} className={`${ESTETICA_FORMULARIO(isDark).input} ${RADIO_GENERAL}`} value={nuevoTitulo} onChange={e => setNuevoTitulo(e.target.value)} />
+                  <input type="text" placeholder={tipoJuntada === 'IRL' ? "Ej: Asadito en lo de Uli" : "Ej: Torneo de Rocket League"} className={`${ESTETICA_FORMULARIO(isDark).input} ${RADIO_GENERAL}`} value={nuevoTitulo} onChange={e => setNuevoTitulo(e.target.value)} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -639,12 +711,13 @@ export default function Home() {
                     <div>
                       <label className={`text-[10px] font-bold ml-1 mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Sede</label>
                       <div className="flex gap-2 mb-3">
-                        <button onClick={() => setEsSedeFija(true)} className={esSedeFija ? ESTETICA_FORMULARIO(isDark).btnOpcionActivo : ESTETICA_FORMULARIO(isDark).btnOpcionInactivo}>FIJA</button>
-                        <button onClick={() => setEsSedeFija(false)} className={!esSedeFija ? ESTETICA_FORMULARIO(isDark).btnOpcionActivo : ESTETICA_FORMULARIO(isDark).btnOpcionInactivo}>POR VOTACIÓN</button>
+                        <button onClick={() => setOpcionSede('FIJA')} className={opcionSede === 'FIJA' ? ESTETICA_FORMULARIO(isDark).btnOpcionActivo : ESTETICA_FORMULARIO(isDark).btnOpcionInactivo}>FIJA</button>
+                        <button onClick={() => setOpcionSede('VOTACION')} className={opcionSede === 'VOTACION' ? ESTETICA_FORMULARIO(isDark).btnOpcionActivo : ESTETICA_FORMULARIO(isDark).btnOpcionInactivo}>VOTACIÓN</button>
+                        <button onClick={() => setOpcionSede('CUSTOM')} className={opcionSede === 'CUSTOM' ? ESTETICA_FORMULARIO(isDark).btnOpcionActivo : ESTETICA_FORMULARIO(isDark).btnOpcionInactivo}>CUSTOM</button>
                       </div>
                       
                       <div className="mt-1">
-                        {esSedeFija ? (
+                        {opcionSede === 'FIJA' && (
                           <div className="relative">
                             <select className={`${ESTETICA_FORMULARIO(isDark).input} ${RADIO_GENERAL} appearance-none cursor-pointer pr-8`} value={sedeFija} onChange={e => setSedeFija(e.target.value)}>
                               {AMIGOS_FALLBACK.map(a => <option key={a} value={`Casa de ${a}`}>Casa de {a}</option>)}
@@ -653,7 +726,8 @@ export default function Home() {
                               <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>▼</span>
                             </div>
                           </div>
-                        ) : (
+                        )}
+                        {opcionSede === 'VOTACION' && (
                           <div className={`pt-2 pb-3 px-3 rounded-2xl border ${isDark ? 'bg-slate-800/30 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
                             <p className={`text-[9px] font-black mb-3 text-center uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Seleccionar casas candidatas:</p>
                             <div className="flex flex-wrap justify-center gap-2">
@@ -669,6 +743,16 @@ export default function Home() {
                             </div>
                           </div>
                         )}
+                        {opcionSede === 'CUSTOM' && (
+                          <input 
+                            type="text" 
+                            maxLength={20}
+                            placeholder="Ej: Vertigo, Consti" 
+                            className={`${ESTETICA_FORMULARIO(isDark).input} ${RADIO_GENERAL}`} 
+                            value={sedePersonalizadaInput} 
+                            onChange={e => setSedePersonalizadaInput(e.target.value)} 
+                          />
+                        )}
                       </div>
                     </div>
                 )}
@@ -677,7 +761,7 @@ export default function Home() {
                   <label className={`text-[10px] font-bold ml-1 mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Notas (Opcional)</label>
                   <input 
                     type="text" 
-                    placeholder={tipoJuntada === 'IRL' ? "EJ: Traigan hielo, falta coca..." : "EJ: Superclásico de Rocket League..."} 
+                    placeholder={tipoJuntada === 'IRL' ? "Ej: Traigan hielo, falta coca" : "Ej: Superclásico de Rocket League"} 
                     className={`${ESTETICA_FORMULARIO(isDark).input} ${RADIO_GENERAL}`} 
                     value={notas} 
                     onChange={e => setNotas(e.target.value)} 
@@ -722,7 +806,7 @@ export default function Home() {
                         </>
                       ) : (
                         <span className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${isDark ? 'text-slate-400' : 'text-violet-600'}`}>
-                          📸 AGREGAR FOTO (OPCIONAL)
+                          📸 AGREGAR FOTO (OBLIGATORIA)
                         </span>
                       )}
                     </div>
@@ -811,12 +895,12 @@ export default function Home() {
 
                                   <div className={`flex flex-col gap-1.5 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
                                       <label className={`text-[9px] font-bold ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Cambiar Contraseña (Opcional)</label>
-                                      <input type="password" placeholder="Nueva contraseña..." value={nuevaPassword} onChange={e => setNuevaPassword(e.target.value)} className={`w-full h-8 px-3 rounded-lg text-[10px] font-bold outline-none focus:ring-1 border ${isDark ? 'bg-slate-800 border-slate-700 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-violet-300 placeholder:text-slate-400'}`} />
+                                      <input type="password" placeholder="Nueva contraseña..." value={nuevaPassword} onChange={e => setNuevaPassword(e.target.value)} className={`w-full h-8 px-3 rounded-lg text-[10px] font-bold outline-none focus:ring-1 border ${isDark ? 'bg-slate-800 border-slate-700 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-800 focus:ring-violet-300 placeholder:text-slate-400'}`} />
                                   </div>
 
                                   <div className={`flex flex-col gap-1.5 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
                                       <label className={`text-[9px] font-black ml-1 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>🔒 Contraseña Actual (Opcional)</label>
-                                      <input type="password" placeholder="Solo requerida si cambiás tu clave" value={passwordVieja} onChange={e => setPasswordVieja(e.target.value)} className={`w-full h-8 px-3 rounded-lg text-[10px] font-bold outline-none focus:ring-1 border ${isDark ? 'bg-violet-900/30 border-violet-800 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-violet-50 border-violet-200 text-slate-800 focus:ring-violet-400 placeholder:text-slate-400'}`} />
+                                      <input type="password" placeholder="Solo requerida si cambiás tu clave" value={passwordVieja} onChange={e => setPasswordVieja(e.target.value)} className={`w-full h-8 px-3 rounded-lg text-[10px] font-bold outline-none focus:ring-1 border ${isDark ? 'bg-violet-900/30 border-violet-800 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-white border-violet-200 text-slate-800 focus:ring-violet-400 placeholder:text-slate-400'}`} />
                                   </div>
 
                                   <div className="flex flex-col gap-2 mt-2">
@@ -841,14 +925,78 @@ export default function Home() {
             </nav>
 
             <div className="max-w-4xl mx-auto p-4">
+              {/* --- WIDGET DISCORD --- */}
+              <motion.div 
+                initial={{ opacity: 0, y: 15 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ duration: 0.3 }} 
+                className={`mb-6 p-5 ${RADIO_GENERAL} border transition-colors duration-300 ${isDark ? 'bg-[#5865F2]/10 border-[#5865F2]/20' : 'bg-[#5865F2]/5 border-[#5865F2]/10 shadow-sm'}`}
+              >
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 127.14 96.36" fill="currentColor" className={`w-4 h-4 ${isDark ? 'text-[#5865F2]' : 'text-[#5865F2]'}`}>
+                      <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14h0C127.86,52.43,121.56,29.1,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.31,60,73.31,53s5-12.74,11.43-12.74S96.3,46,96.19,53,91.08,65.69,84.69,65.69Z"/>
+                    </svg>
+                    <h3 className={`text-[11px] font-black uppercase tracking-widest ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                      {discordData?.name || 'Servidor Discord'}
+                    </h3>
+                  </div>
+                </div>
+
+                {discordLoading ? (
+                  <div className="animate-pulse flex gap-2">
+                    <div className={`w-8 h-8 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}></div>
+                    <div className={`w-8 h-8 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}></div>
+                  </div>
+                ) : discordData && !discordData.errorMensaje ? (
+                  <div className="space-y-5">
+                    {canalesConGente.length > 0 ? (
+                        <div className="space-y-4">
+                        {canalesConGente.map((c: any) => (
+                            <div key={c.id}>
+                            <p className={`text-[9px] font-black uppercase tracking-widest mb-2 flex items-center gap-1.5 ${isDark ? 'text-[#5865F2]' : 'text-[#5865F2]'}`}>
+                                🔊 {c.name}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                {c.members.map((m: any) => (
+                                <div key={m.id} className={`flex items-center gap-2 p-1.5 pr-3 rounded-full border transition-colors ${isDark ? 'bg-slate-900 border-slate-800 hover:border-[#5865F2]/50' : 'bg-white border-slate-200 shadow-sm hover:border-[#5865F2]/40'}`}>
+                                    <div className="relative shrink-0">
+                                    <img src={m.avatar_url} alt={m.username} className="w-7 h-7 rounded-full object-cover" />
+                                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 ${isDark ? 'border-slate-900' : 'border-white'} ${m.status === 'online' ? 'bg-green-500' : m.status === 'idle' ? 'bg-yellow-500' : 'bg-slate-500'}`}></span>
+                                    </div>
+                                    <div className="flex flex-col justify-center">
+                                    <span className={`text-[10px] font-black leading-tight ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{m.username}</span>
+                                    {m.game && (
+                                        <span className="text-[7px] font-bold text-[#5865F2] uppercase leading-tight line-clamp-1">{m.game.name}</span>
+                                    )}
+                                    </div>
+                                </div>
+                                ))}
+                            </div>
+                            </div>
+                        ))}
+                        </div>
+                    ) : (
+                        <p className={`text-[10px] font-bold uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                            Silencio total. Nadie en chat de voz 😴
+                        </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className={`text-[10px] font-bold uppercase tracking-widest text-red-500`}>
+                    {discordData?.errorMensaje || 'NO SE PUDO CARGAR DISCORD'}
+                  </p>
+                )}
+              </motion.div>
+
               {juntadasOrdenadas.length === 0 ? (
-                <motion.div variants={varFadeInUp} initial="hidden" animate="visible" className={`border-2 border-dashed ${RADIO_GENERAL} py-12 flex flex-col items-center justify-center text-center mt-2 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={`border-2 border-dashed ${RADIO_GENERAL} py-12 flex flex-col items-center justify-center text-center mt-2 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
                   <div className="text-3xl mb-3 opacity-30">🗓️</div>
                   <p className={`text-[10px] font-bold mb-5 uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Nada por acá...</p>
                   <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { resetForm(); setMostrandoFormulario(true); }} className={`bg-violet-600 text-white font-black shadow-md shadow-violet-200 hover:bg-violet-700 transition-all uppercase tracking-widest flex items-center justify-center text-xs px-6 h-10 ${RADIO_GENERAL} ${isDark ? 'shadow-none' : ''}`}>+ PROPONER</motion.button>
                 </motion.div>
               ) : (
-                <motion.div variants={varStaggerContainer} initial="hidden" animate="visible" className="space-y-6">
+                <div className="space-y-6">
                   <div className="flex justify-between items-end mb-2 px-1">
                     <h2 className={`text-2xl font-black tracking-tighter uppercase ${isDark ? 'text-white' : 'text-slate-950'}`}>PROPUESTAS</h2>
                     <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { resetForm(); setMostrandoFormulario(true); }} className={`bg-violet-600 text-white font-black hover:bg-violet-700 transition-all uppercase tracking-widest flex items-center justify-center text-[10px] px-4 h-8 ${RADIO_GENERAL}`}>+ NUEVA</motion.button>
@@ -870,15 +1018,16 @@ export default function Home() {
 
                       const esDiscord = j.tipo === 'DISCORD';
                       const esIRL = j.tipo === 'IRL' || !j.tipo;
+                      const iconoSede = j.esSedePersonalizada ? '📍' : '🏠';
 
                       const totalVotosSede = j.candidatos ? j.candidatos.reduce((acc: number, c: any) => acc + (c.votantes?.length || 0), 0) : 0;
                       const totalPosiblesVotantes = AMIGOS_FALLBACK.length - (j.rechazados?.length || 0);
                       const votosRestantes = Math.max(0, totalPosiblesVotantes - totalVotosSede);
 
-                      let sedeConfirmada = j.esSedeFija ? j.sedeFinal : null;
+                      let sedeConfirmada = (j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : null;
                       let esIrremontable = false;
 
-                      if (!j.esSedeFija && j.candidatos && j.candidatos.length > 0) {
+                      if (!j.esSedeFija && !j.esSedePersonalizada && j.candidatos && j.candidatos.length > 0) {
                         const ordenados = [...j.candidatos].sort((a, b) => (b.votantes?.length || 0) - (a.votantes?.length || 0));
                         const maxVotos = ordenados[0]?.votantes?.length || 0;
                         const segundoMaxVotos = ordenados.length > 1 ? (ordenados[1]?.votantes?.length || 0) : 0;
@@ -894,11 +1043,13 @@ export default function Home() {
                       return (
                         <motion.div 
                           key={j.id}
-                          variants={varFadeInUp}
+                          initial={{ opacity: 0, y: 15 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.3 }}
                           className={`relative ${ESTETICA_TARJETA(isDark).contenedor} ${estadoT.texto.includes('EXPIRADO') ? (isDark ? 'opacity-50' : 'opacity-60 grayscale-[30%]') : ''} ${estaPineado && !estadoT.texto.includes('EXPIRADO') ? (isDark ? 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-slate-950 border-transparent' : 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-white border-transparent') : ''}`}
                         >
                           {/* BOTONES DE CONTROL */}
-                          <div className="absolute top-6 right-6 z-30 flex flex-col gap-1.5 items-center justify-center">
+                          <div className="absolute top-3 right-3 z-30 flex flex-col gap-1.5 items-center justify-center">
                             {puedeEliminarOEditar && (
                               <>
                                 <motion.button
@@ -942,9 +1093,16 @@ export default function Home() {
                           </div>
 
                           {/* IDENTIDAD */}
-                          <div className="absolute top-6 left-6 z-20 flex flex-row gap-1.5 items-center">
+                          <div className="absolute top-3 left-3 z-20 flex flex-row gap-1.5 items-center">
                             <span className={`${j.imagenUrl ? 'bg-black/40 backdrop-blur-md text-white border-white/10' : (esDiscord ? (isDark ? 'bg-[#5865F2]/20 text-[#5865F2] border-[#5865F2]/30' : 'bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20') : (isDark ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50' : 'bg-emerald-50 text-emerald-600 border-emerald-100'))} text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest border shadow-sm flex items-center gap-1.5`}>
-                                {esDiscord ? '🎧 DISCORD' : '📍 IRL'}
+                                {esDiscord ? (
+                                    <>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 127.14 96.36" fill="currentColor" className="w-3 h-3 text-white drop-shadow-sm">
+                                            <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14h0C127.86,52.43,121.56,29.1,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.31,60,73.31,53s5-12.74,11.43-12.74S96.3,46,96.19,53,91.08,65.69,84.69,65.69Z"/>
+                                        </svg> 
+                                        DISCORD
+                                    </>
+                                ) : '📍 IRL'}
                             </span>
                             <span className={`${j.imagenUrl ? 'bg-black/40 backdrop-blur-md text-white border-white/10' : (isDark ? 'bg-violet-900/30 text-violet-300 border-violet-800/50' : 'bg-violet-50 text-violet-600 border-violet-100')} text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest border shadow-sm flex items-center gap-1.5`}>
                                 <img src={getFotoUsuario(j.creador)} className="w-3.5 h-3.5 rounded-full object-cover" alt="creador" />
@@ -958,7 +1116,8 @@ export default function Home() {
                               <div className="absolute inset-0 bg-cover bg-center z-0" style={{ backgroundImage: `url(${j.imagenUrl})` }} />
                               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-900/60 to-slate-900/10 z-10" />
                               
-                              <div className="relative z-20 flex flex-col gap-1.5 pt-16">
+                              {/* Posicionamiento absoluto en la parte inferior con margen '3' */}
+                              <div className="absolute bottom-3 left-6 right-3 z-20 flex flex-col gap-1.5 pt-16">
                                 <h3 className="text-2xl font-black text-white leading-none tracking-tight drop-shadow-md pr-8">{j.titulo}</h3>
                                 
                                 <div className="flex items-center flex-wrap gap-2 text-slate-200 drop-shadow-md">
@@ -971,16 +1130,16 @@ export default function Home() {
                                 </div>
 
                                 {esIRL && (
-                                  (j.esSedeFija || esIrremontable) ? (
+                                  (j.esSedeFija || j.esSedePersonalizada || esIrremontable) ? (
                                      <div className="flex items-center gap-1.5 drop-shadow-md">
-                                        <span className="text-sm">🏠</span>
-                                        <span className="bg-green-500 text-white text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shadow-sm">
-                                            {j.esSedeFija ? j.sedeFinal : `${sedeConfirmada} VOTADA COMO SEDE`}
+                                        <span className="text-sm">{iconoSede}</span>
+                                        <span className="bg-white text-slate-900 border border-slate-200 text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shadow-sm">
+                                            {(j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : `${sedeConfirmada} VOTADA COMO SEDE`}
                                         </span>
                                     </div>
                                   ) : (
                                      <div className="flex items-center gap-1.5 drop-shadow-md">
-                                        <span className="text-sm">🏠</span>
+                                        <span className="text-sm">{iconoSede}</span>
                                         <span className="bg-yellow-400 text-yellow-950 text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shadow-sm">
                                             SEDE EN VOTACIÓN
                                         </span>
@@ -1006,16 +1165,16 @@ export default function Home() {
                                   </div>
 
                                   {esIRL && (
-                                    (j.esSedeFija || esIrremontable) ? (
+                                    (j.esSedeFija || j.esSedePersonalizada || esIrremontable) ? (
                                        <div className={`flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-950'}`}>
-                                          <span className="text-sm">🏠</span>
-                                          <span className="bg-green-500 text-white text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shadow-sm">
-                                              {j.esSedeFija ? j.sedeFinal : `${sedeConfirmada} VOTADA COMO SEDE`}
+                                          <span className="text-sm">{iconoSede}</span>
+                                          <span className="bg-white text-slate-900 border border-slate-200 text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shadow-sm">
+                                              {(j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : `${sedeConfirmada} VOTADA COMO SEDE`}
                                           </span>
                                       </div>
                                     ) : (
                                        <div className={`flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-950'}`}>
-                                          <span className="text-sm">🏠</span>
+                                          <span className="text-sm">{iconoSede}</span>
                                           <span className="bg-yellow-400 text-yellow-950 text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shadow-sm">
                                               SEDE EN VOTACIÓN
                                           </span>
@@ -1027,7 +1186,7 @@ export default function Home() {
                           )}
                           
                           {/* --- SECCIÓN DE VOTACIÓN DE SEDE --- */}
-                          {esIRL && (!j.esSedeFija && !esIrremontable) && (
+                          {esIRL && (!j.esSedeFija && !j.esSedePersonalizada && !esIrremontable) && (
                             <div className="space-y-3 mb-4 mt-1">
                               <div className={`p-3 border ${RADIO_GENERAL} ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
                                 <p className={`text-[9px] font-black uppercase tracking-widest mb-2 flex justify-between ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -1134,60 +1293,60 @@ export default function Home() {
                             className={`w-full flex items-center justify-center gap-1.5 py-2 mb-2 text-[10px] font-black uppercase tracking-widest transition-colors ${isDark ? 'text-green-500 hover:text-green-400' : 'text-green-600 hover:text-green-700'}`}
                           >
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.305-.88-.653-1.473-1.46-1.646-1.757-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51h-.57c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                              AVISAR POR WHATSAPP
-                            </button>
+                            AVISAR POR WHATSAPP
+                          </button>
 
-                            {/* --- ZONA DE COMENTARIOS INLINE (AL FINAL) --- */}
-                            <div className={`mt-auto pt-3 border-t flex-1 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-                              {/* Lista de Comentarios */}
-                              <div className="space-y-1.5 mb-2 max-h-32 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-                                {(j.excusas || []).map((c: any, idx: number) => {
-                                  let ringColor = 'border-transparent';
-                                  if ((j.confirmados || []).includes(c.usuario)) ringColor = `ring-2 ring-green-500 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}`;
-                                  else if ((j.dudosos || []).includes(c.usuario)) ringColor = `ring-2 ring-yellow-400 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}`;
-                                  else if ((j.rechazados || []).includes(c.usuario)) ringColor = `ring-2 ring-red-500 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}`;
+                          {/* --- ZONA DE COMENTARIOS INLINE (AL FINAL) --- */}
+                          <div className={`mt-auto pt-3 border-t flex-1 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                            {/* Lista de Comentarios */}
+                            <div className="space-y-1.5 mb-2 max-h-32 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+                              {(j.excusas || []).map((c: any, idx: number) => {
+                                let ringColor = 'border-transparent';
+                                if ((j.confirmados || []).includes(c.usuario)) ringColor = `ring-2 ring-green-500 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}`;
+                                else if ((j.dudosos || []).includes(c.usuario)) ringColor = `ring-2 ring-yellow-400 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}`;
+                                else if ((j.rechazados || []).includes(c.usuario)) ringColor = `ring-2 ring-red-500 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}`;
 
-                                  return (
-                                    <div key={idx} className={`flex items-center gap-2 group relative py-1 rounded-lg px-1 transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
-                                      <img src={getFotoUsuario(c.usuario)} className={`w-6 h-6 rounded-full object-cover shadow-sm shrink-0 ${ringColor}`} alt="avatar" />
-                                      <div className={`flex-1 text-[10px] font-medium leading-tight line-clamp-3 break-words ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                                        <span className={`font-black uppercase mr-1 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{c.usuario}:</span>
-                                        {c.texto}
-                                      </div>
-                                      {c.usuario === usuarioLogueado && (
-                                        <button onClick={() => borrarComentario(j.id, c.texto)} className={`font-bold text-[10px] transition-colors ml-2 px-1 ${isDark ? 'text-slate-500 hover:text-red-400' : 'text-slate-400 hover:text-red-500'}`} title="Borrar comentario">✕</button>
-                                      )}
+                                return (
+                                  <div key={idx} className={`flex items-center gap-2 group relative py-1 rounded-lg px-1 transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
+                                    <img src={getFotoUsuario(c.usuario)} className={`w-6 h-6 rounded-full object-cover shadow-sm shrink-0 ${ringColor}`} alt="avatar" />
+                                    <div className={`flex-1 text-[10px] font-medium leading-tight line-clamp-3 break-words ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                                      <span className={`font-black uppercase mr-1 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{c.usuario}:</span>
+                                      {c.texto}
                                     </div>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Input para Nuevo Comentario */}
-                              <div className="relative w-full mt-2">
-                                <input 
-                                  type="text"
-                                  maxLength={120} 
-                                  placeholder="Escribí un comentario..." 
-                                  value={comentariosInputs[j.id] || ''}
-                                  onChange={(e) => setComentariosInputs(prev => ({ ...prev, [j.id]: e.target.value }))}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') agregarComentario(j.id); }}
-                                  className={`w-full h-8 pl-3 pr-8 rounded-lg text-[9px] font-bold outline-none focus:ring-1 transition-all border ${isDark ? 'bg-slate-900 border-slate-700 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-800 focus:ring-violet-300 placeholder:text-slate-400'}`}
-                                />
-                                <button 
-                                  onClick={() => agregarComentario(j.id)}
-                                  className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 bg-violet-600 hover:bg-violet-700 text-white rounded-md flex items-center justify-center shadow-sm active:scale-95 transition-all"
-                                >
-                                  <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                                </button>
-                              </div>
+                                    {c.usuario === usuarioLogueado && (
+                                      <button onClick={() => borrarComentario(j.id, c.texto)} className={`font-bold text-[10px] transition-colors ml-2 px-1 ${isDark ? 'text-slate-500 hover:text-red-400' : 'text-slate-400 hover:text-red-500'}`} title="Borrar comentario">✕</button>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
 
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  </motion.div>
-                )}
+                            {/* Input para Nuevo Comentario */}
+                            <div className="relative w-full mt-2">
+                              <input 
+                                type="text"
+                                maxLength={120} 
+                                placeholder="Escribí un comentario..." 
+                                value={comentariosInputs[j.id] || ''}
+                                onChange={(e) => setComentariosInputs(prev => ({ ...prev, [j.id]: e.target.value }))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') agregarComentario(j.id); }}
+                                className={`w-full h-8 pl-3 pr-8 rounded-lg text-[9px] font-bold outline-none focus:ring-1 transition-all border ${isDark ? 'bg-slate-900 border-slate-700 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-800 focus:ring-violet-300 placeholder:text-slate-400'}`}
+                              />
+                              <button 
+                                onClick={() => agregarComentario(j.id)}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 bg-violet-600 hover:bg-violet-700 text-white rounded-md flex items-center justify-center shadow-sm active:scale-95 transition-all"
+                              >
+                                <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                              </button>
+                            </div>
+                          </div>
+
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </main>
         )}
