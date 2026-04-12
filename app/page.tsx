@@ -238,17 +238,39 @@
 
     const guardarPerfil = async () => {
       const userActual = usuariosDB.find(u => u.nombre === usuarioLogueado);
-      if (!userActual || (nuevaPassword.trim() && passwordVieja !== userActual.password && !alert("❌ La contraseña actual es incorrecta."))) return;
+      if (!userActual) return;
+
+      if (nuevaPassword.trim() && passwordVieja !== userActual.password) {
+        alert("❌ La contraseña actual es incorrecta.");
+        return;
+      }
 
       setIsUploading(true);
       let finalFotoUrl = userActual.foto_perfil;
-      if (fotoFile) finalFotoUrl = await subirImagenAlStorage(fotoFile, 'perfiles') || alert("No se pudo subir la foto.") || finalFotoUrl;
-      else if (nuevaFotoUrl.trim()) finalFotoUrl = nuevaFotoUrl.trim();
+      
+      if (fotoFile) {
+        const uploadedUrl = await subirImagenAlStorage(fotoFile, 'perfiles');
+        if (!uploadedUrl) {
+          alert("No se pudo subir la foto.");
+        } else {
+          finalFotoUrl = uploadedUrl;
+        }
+      } else if (nuevaFotoUrl.trim()) {
+        finalFotoUrl = nuevaFotoUrl.trim();
+      }
 
       const { error } = await supabase.from('usuarios').update({ password: nuevaPassword.trim() || userActual.password, foto_perfil: finalFotoUrl }).eq('nombre', usuarioLogueado);
       
-      if (error) alert("❌ Error al guardar: " + error.message);
-      else { setMenuPerfilAbierto(false); setPasswordVieja(''); setNuevaPassword(''); setNuevaFotoUrl(''); setFotoFile(null); setFotoPreview(null); }
+      if (error) {
+        alert("❌ Error al guardar: " + error.message);
+      } else { 
+        setMenuPerfilAbierto(false); 
+        setPasswordVieja(''); 
+        setNuevaPassword(''); 
+        setNuevaFotoUrl(''); 
+        setFotoFile(null); 
+        setFotoPreview(null); 
+      }
       setIsUploading(false);
     };
 
@@ -265,12 +287,31 @@
     };
 
     const publicarJuntada = async () => {
-      if (!nuevoTitulo.trim() || !fechaSel || !horaSel.trim()) return alert("Completá título, fecha y hora.");
-      if (tipoJuntada === 'IRL' && opcionSede === 'CUSTOM' && !sedePersonalizadaInput.trim()) return alert("Ingresá la sede personalizada.");
-      if (!juntadaEnEdicion && !imagenJuntada) return alert("¡Tenés que agregar una foto de portada sí o sí!");
+      if (!nuevoTitulo.trim() || !fechaSel || !horaSel.trim()) {
+        alert("Completá título, fecha y hora.");
+        return;
+      }
+      if (tipoJuntada === 'IRL' && opcionSede === 'CUSTOM' && !sedePersonalizadaInput.trim()) {
+        alert("Ingresá la sede personalizada.");
+        return;
+      }
+      if (!juntadaEnEdicion && !imagenJuntada) {
+        alert("¡Tenés que agregar una foto de portada sí o sí!");
+        return;
+      }
       
       setIsUploading(true);
-      let finalImageUrl = imagenJuntada ? (await subirImagenAlStorage(imagenJuntada, 'juntadas') || alert("Error subiendo foto.")) : juntadas.find(x => x.id === juntadaEnEdicion)?.imagenUrl;
+      let finalImageUrl = juntadas.find(x => x.id === juntadaEnEdicion)?.imagenUrl;
+
+      if (imagenJuntada) {
+        const uploadedUrl = await subirImagenAlStorage(imagenJuntada, 'juntadas');
+        if (!uploadedUrl) {
+          alert("Error subiendo foto.");
+          setIsUploading(false);
+          return;
+        }
+        finalImageUrl = uploadedUrl;
+      }
 
       const [y, m, d] = fechaSel.split('-'); const [h, min] = horaSel.split(':');
       const targetDate = new Date(Number(y), Number(m) - 1, Number(d), Number(h) || 0, Number(min) || 0);
@@ -387,13 +428,24 @@
     const resetForm = () => { setJuntadaEnEdicion(null); setTipoJuntada('IRL'); setNuevoTitulo(''); setFechaSel(''); setHoraSel(''); setTagsSel([]); setCandidatosSede([]); setOpcionSede('FIJA'); setSedePersonalizadaInput(''); setNotas(''); setImagenJuntada(null); setImagenJuntadaPreview(null); };
 
     const publicarPosteo = async () => {
-      if (!imagenPost) return alert("Tenés que agregar una foto sí o sí para publicar.");
+      if (!imagenPost) {
+        alert("Tenés que agregar una foto sí o sí para publicar.");
+        return;
+      }
       setIsUploading(true);
       const finalImageUrl = await subirImagenAlStorage(imagenPost, 'posteos');
-      if (!finalImageUrl) { alert("Hubo un error subiendo la foto."); return setIsUploading(false); }
+      if (!finalImageUrl) {
+        alert("Hubo un error subiendo la foto.");
+        setIsUploading(false);
+        return;
+      }
 
       const { data, error } = await supabase.from('posteos').insert([{ creador: usuarioLogueado, texto: textoPost.trim(), imagenurl: finalImageUrl, anonimo: esAnonimo, timestamp: Date.now(), likes: [], dislikes: [], comentarios: [] }]).select();
-      if (error) { alert(`❌ Error al publicar: ${error.message}`); return setIsUploading(false); }
+      if (error) {
+        alert(`❌ Error al publicar: ${error.message}`);
+        setIsUploading(false);
+        return;
+      }
       if (data?.length) setPosteos(prev => [{ ...data[0], imagenUrl: data[0].imagenurl ?? data[0].imagenUrl }, ...prev]);
       
       setMostrandoFormPosteo(false); setTextoPost(''); setImagenPost(null); setImagenPostPreview(null); setEsAnonimo(false); setIsUploading(false);
