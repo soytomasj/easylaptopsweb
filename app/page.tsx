@@ -476,7 +476,7 @@ export default function Home() {
   const calcularEstadoTiempo = (t: number) => {
     if (!t) return { texto: 'CALCULANDO... ⏳', color: 'bg-violet-600' };
     const diff = t - Date.now(), horas = Math.floor(diff / 3600000), dias = Math.floor(horas / 24);
-    if (diff < 0) return Math.abs(diff) <= 10800000 ? { texto: 'EN CURSO 😄', color: 'bg-violet-600' } : { texto: 'EXPIRADO', color: 'bg-red-500' };
+    if (diff < 0) return Math.abs(diff) <= 10800000 ? { texto: 'EN CURSO 😄', color: 'bg-violet-600' } : { texto: 'FINALIZADO', color: 'bg-red-500' };
     return dias > 1 ? { texto: `FALTAN ${dias} DÍAS ⏳`, color: 'bg-violet-600' } : dias === 1 ? { texto: `MAÑANA 📆 `, color: 'bg-violet-600' } : horas >= 1 ? { texto: `FALTAN ${horas} HORAS ⏰`, color: 'bg-violet-600' } : { texto: '¡EN UN RATO! 🔥', color: 'bg-violet-600' };
   };
 
@@ -740,8 +740,10 @@ export default function Home() {
                                   <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2 items-center">
                                     <span className="text-sm text-center w-4 drop-shadow-md">📅</span>
                                     <div className="flex items-center flex-wrap gap-2 text-slate-100 drop-shadow-md">
-                                      <p className="text-[11px] font-bold">{j.fechaDisplay} — <span className="text-white">{j.horaDisplay}</span></p>
-                                      <span className={`${estadoT.color} bg-opacity-90 text-white text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm`}>{estadoT.texto}</span>
+                                      <div className="flex items-center gap-2 flex-nowrap">
+                                        <p className="text-[11px] font-bold whitespace-nowrap">{j.fechaDisplay} — <span className="text-white">{j.horaDisplay}</span></p>
+                                        <span className={`${estadoT.color} bg-opacity-90 text-white text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm shrink-0`}>{estadoT.texto}</span>
+                                      </div>
                                     </div>
                                     
                                     {esIRL && (
@@ -749,11 +751,11 @@ export default function Home() {
                                         <span className="text-sm text-center w-4 drop-shadow-md">{iconoSede}</span>
                                         <div className="flex items-center drop-shadow-md">
                                           {(j.esSedeFija || j.esSedePersonalizada || esIrremontable) ? (
-                                            <span className="bg-white text-slate-900 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
+                                            <span className="bg-white/20 backdrop-blur-md text-white border border-white/60 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
                                               {(j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : `${sedeConfirmada} VOTADA COMO SEDE`}
                                             </span>
                                           ) : (
-                                            <span className="bg-yellow-400 text-yellow-950 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
+                                            <span className="bg-yellow-400/25 backdrop-blur-md text-yellow-200 border border-yellow-400/70 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
                                               SEDE EN VOTACIÓN
                                             </span>
                                           )}
@@ -776,8 +778,10 @@ export default function Home() {
                                 <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2 items-center mb-4">
                                   <span className="text-xs text-center w-4">📅</span>
                                   <div className={`flex items-center flex-wrap gap-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                    <p className="text-[11px] font-bold">{j.fechaDisplay} — <span className={isDark ? 'text-white' : 'text-slate-950'}>{j.horaDisplay}</span></p>
-                                    <span className={`${estadoT.color} text-white text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm`}>{estadoT.texto}</span>
+                                    <div className="flex items-center gap-2 flex-nowrap">
+                                      <p className="text-[11px] font-bold whitespace-nowrap">{j.fechaDisplay} — <span className={isDark ? 'text-white' : 'text-slate-950'}>{j.horaDisplay}</span></p>
+                                      <span className={`${estadoT.color} text-white text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm shrink-0`}>{estadoT.texto}</span>
+                                    </div>
                                     {!esIRL && <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => compartirWhatsApp(j)} className="shrink-0 w-6 h-6 bg-[#25D366] text-white rounded-full relative overflow-hidden shadow-md hover:bg-[#1fb855] transition-colors" title="Avisar por WhatsApp">
                                     <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.305-.88-.653-1.473-1.46-1.646-1.757-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51h-.57c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                                   </motion.button>}
@@ -788,11 +792,11 @@ export default function Home() {
                                       <span className={`text-xs text-center w-4 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{iconoSede}</span>
                                       <div className="flex items-center justify-between gap-2">
                                         {(j.esSedeFija || j.esSedePersonalizada || esIrremontable) ? (
-                                          <span className="bg-white text-slate-900 border border-slate-200 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
+                                          <span className="bg-white/60 backdrop-blur-sm text-slate-900 border border-white/90 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
                                             {(j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : `${sedeConfirmada} VOTADA COMO SEDE`}
                                           </span>
                                         ) : (
-                                          <span className="bg-yellow-400 text-yellow-950 border border-yellow-400 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
+                                          <span className="bg-yellow-400/20 backdrop-blur-sm text-yellow-800 border border-yellow-400 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
                                             SEDE EN VOTACIÓN
                                           </span>
                                         )}
