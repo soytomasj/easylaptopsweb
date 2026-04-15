@@ -2,1006 +2,1128 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from './supabase'; 
+import { supabase } from '../lib/supabase'; // <-- RUTA CORREGIDA
+
+// ========================================================
+// 🛠️ UTILIDAD: COMPRESOR DE IMÁGENES NATIVO (CLIENT-SIDE)
+// ========================================================
+const comprimirImagen = (file: File, maxWidth: number = 1200, quality: number = 0.85): Promise<File> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // Mantener proporción limitando el ancho máximo
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            // Forzamos formato jpeg para mayor compresión
+            const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            resolve(compressedFile);
+          } else {
+            resolve(file); // Fallback si falla el blob
+          }
+        }, 'image/jpeg', quality);
+      };
+    };
+  });
+};
 
 // ========================================================
 // 🎨 ESTÉTICA MODULAR Y JERARQUÍA (CON MODO OSCURO)
 // ========================================================
-const RADIO_GENERAL = "rounded-2xl"; 
-
-const ESTETICA_LOGIN = (isDark: boolean) => ({
-  contenedor: `w-full max-w-[300px] p-6 ${RADIO_GENERAL} transition-colors duration-300 border ${isDark ? 'bg-slate-900 border-slate-800 shadow-none' : 'bg-white shadow-xl shadow-slate-200/60 border-slate-200/80'}`,
-  input: `w-full h-10 px-4 transition-all text-xs font-bold outline-none focus:ring-2 border ${isDark ? 'bg-slate-800 border-slate-700 focus:ring-violet-500 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 focus:ring-violet-300 text-slate-800 placeholder:text-slate-400'}`,
-  boton: `font-black active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center text-xs w-full h-10 mt-1 ${RADIO_GENERAL} ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-600 text-white shadow-md shadow-violet-200 hover:bg-violet-700'}`
+const RADIO_GENERAL = "rounded-xl sm:rounded-2xl"; 
+const ESTETICA_TARJETA = (isDark: boolean) => ({ contenedor: `flex flex-col overflow-hidden ${RADIO_GENERAL} border transition-colors duration-300 relative min-w-0 cursor-pointer ${isDark ? 'bg-slate-900 border-slate-800 shadow-none hover:border-slate-700' : 'bg-white shadow-lg shadow-slate-200/50 border-slate-200 hover:border-slate-300 hover:shadow-xl'}` });
+const ESTETICA_CONTROLES = (isDark: boolean) => ({
+  select: `h-10 px-4 rounded-xl text-[10px] font-medium uppercase tracking-wider outline-none focus:ring-2 appearance-none transition-all border cursor-pointer w-full sm:w-auto ${isDark ? 'bg-slate-800 border-slate-700 text-white focus:ring-violet-500 hover:border-slate-600' : 'bg-white border-slate-200 text-slate-700 focus:ring-violet-300 hover:border-slate-300 shadow-sm'}`,
+  botonPrincipal: `h-10 px-6 rounded-xl text-[10px] font-semibold shadow-md shadow-violet-200 hover:bg-violet-700 transition-all uppercase tracking-wider flex items-center justify-center bg-violet-600 text-white ${isDark ? 'shadow-none' : ''}`
 });
-
 const ESTETICA_FORMULARIO = (isDark: boolean) => ({
-  contenedor: `w-full max-w-[360px] mx-auto p-6 min-h-[600px] h-[85vh] max-h-[740px] flex flex-col ${RADIO_GENERAL} transition-colors duration-300 border ${isDark ? 'bg-slate-900 shadow-none border-slate-800' : 'bg-white shadow-xl shadow-slate-200/60 border-slate-200/80'}`,
-  input: `w-full h-10 px-4 transition-all text-xs font-bold outline-none focus:ring-2 border ${isDark ? 'bg-slate-800 border-slate-700 focus:ring-violet-500 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 focus:ring-violet-300 text-slate-800 placeholder:text-slate-400'}`,
-  label: `text-[10px] font-bold ml-1 mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`,
-  botonPrincipal: `font-black active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center text-xs w-full h-12 mt-2 ${RADIO_GENERAL} ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-600 text-white shadow-md shadow-violet-200 hover:bg-violet-700'}`,
-  btnOpcionInactivo: `flex-1 h-10 ${RADIO_GENERAL} text-[10px] font-black transition-all border-2 ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`,
-  btnOpcionActivo: `flex-1 h-10 ${RADIO_GENERAL} text-[10px] font-black transition-all border-2 bg-violet-600 text-white border-violet-600`,
-  uploadArea: `relative w-full rounded-xl flex items-center justify-center transition-colors cursor-pointer overflow-hidden border-2`
+  contenedor: `w-full max-w-[400px] mx-auto p-6 flex flex-col ${RADIO_GENERAL} transition-colors duration-300 border ${isDark ? 'bg-slate-900 shadow-none border-slate-800' : 'bg-white shadow-xl shadow-slate-200/60 border-slate-200/80'}`,
+  input: `w-full px-4 transition-all text-xs font-medium outline-none focus:ring-2 focus:ring-inset border ${isDark ? 'bg-slate-800 border-slate-700 focus:ring-violet-500 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 focus:ring-violet-300 text-slate-800 placeholder:text-slate-400'}`,
+  label: `text-[10px] font-medium ml-1 mb-1 block uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`,
+  botonPrincipal: `font-semibold active:scale-95 transition-all uppercase tracking-wider flex items-center justify-center text-xs w-full h-12 mt-2 ${RADIO_GENERAL} ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed' : 'bg-violet-600 text-white shadow-md shadow-violet-200 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed'}`,
+  uploadArea: `relative w-full rounded-xl flex flex-col items-center justify-center transition-colors overflow-hidden border-2`
 });
 
-const ESTETICA_TARJETA = (isDark: boolean) => ({
-  contenedor: `p-5 ${RADIO_GENERAL} border flex flex-col transition-colors duration-300 ${isDark ? 'bg-slate-900 border-slate-800 shadow-none' : 'bg-white shadow-xl shadow-slate-200/60 border-slate-200/80'}`,
-});
-
-const AMIGOS_FALLBACK = ['Tomas', 'Koke', 'Tito', 'Uli', 'Pablo', 'Oscarcito'];
-
-const TAGS_DISPONIBLES_IRL = [
-  { label: 'PS5', emoji: '🎮' }, { label: 'Asado', emoji: '🥩' }, { label: 'Juegos de Mesa', emoji: '🎲' }, 
-  { label: 'Novias Invitadas', emoji: '👩‍❤️‍👨' }, { label: 'Chupi', emoji: '🥃' }, { label: 'Minubis', emoji: '👩🏻‍🦰' },
-  { label: 'Lowcost', emoji: '💸' }, { label: 'María', emoji: '🍁' }, { label: 'Fiesta', emoji: '🎉' }
+// ========================================================
+// 📦 DATOS Y CONSTANTES
+// ========================================================
+const MOCK_BANNERS_INICIALES = [
+  { id: 1, imgDesktop: 'https://images.unsplash.com/photo-1531297172864-45dc6142db6e?q=80&w=1920&h=600&fit=crop', imgMobile: 'https://images.unsplash.com/photo-1531297172864-45dc6142db6e?q=80&w=1080&h=1080&fit=crop', alt: 'Gran oferta de equipos de diseño', link: '#' },
 ];
+const TAGS_DISPONIBLES = [{ label: 'Touch', emoji: '👆' }, { label: '2 en 1', emoji: '🔄' }];
+const DESCRIPCION_POR_DEFECTO = `🚀 Potente y versátil, ideal para estudio, trabajo o diseño. Soporta programas pesados como Ilustrator, Photoshop o Premiere.\n⚡️ Incluye Cargador\n📚 Incluye paquete Office y Windows activado de por vida.\n✅ Equipo 100% probado, formateado y listo para usar.`;
 
-const TAGS_DISPONIBLES_DISCORD = [
-  { label: 'Rocket League', emoji: '🚗' }, { label: 'Lol', emoji: '🧙‍♂️' }, { label: 'Impostor', emoji: '🔪' },
-  { label: 'Make it Meme', emoji: '😂' }, { label: 'Pinturillo', emoji: '🎨' }
-];
+// Interfaces para TypeScript
+interface ImagenPreview {
+  file: File | null;
+  url: string;
+}
 
-const TODOS_LOS_TAGS = [...TAGS_DISPONIBLES_IRL, ...TAGS_DISPONIBLES_DISCORD];
-
-const obtenerTiempoRelativo = (timestamp: number) => {
-  if (!timestamp) return 'Hace un rato';
-  const diffMs = Date.now() - timestamp;
-  const minutos = Math.floor(diffMs / 60000);
-  const horas = Math.floor(diffMs / 3600000);
-  const dias = Math.floor(diffMs / 86400000);
-
-  if (minutos < 1) return 'Hace instantes';
-  if (minutos < 60) return `Hace ${minutos} minuto${minutos !== 1 ? 's' : ''}`;
-  if (horas < 24) return `Hace ${horas} hora${horas !== 1 ? 's' : ''}`;
-  return `Hace ${dias} día${dias !== 1 ? 's' : ''}`;
+// ========================================================
+// 🖼️ COMPONENTES MENORES
+// ========================================================
+const BarraAnuncio = ({ texto, onEdit, isDark, isAdmin }: { texto: string, onEdit: () => void, isDark: boolean, isAdmin: boolean }) => {
+  if (!texto && !isAdmin) return null;
+  const repeticiones = Array(20).fill(texto || "AGREGAR ANUNCIO...");
+  return (
+    <div className={`relative flex items-center justify-center h-8 sm:h-10 group shrink-0 ${isDark ? 'bg-violet-900 text-violet-100' : 'bg-violet-600 text-white'}`}>
+      <div className="w-full max-w-4xl overflow-hidden relative flex items-center h-full" style={{ WebkitMaskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)', maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)' }}>
+        <motion.div animate={{ x: ["0%", "-50%"] }} transition={{ repeat: Infinity, ease: "linear", duration: 100 }} className="flex whitespace-nowrap w-max">
+          {repeticiones.map((t, i) => <span key={i} className="text-[11px] sm:text-[12px] font-bold uppercase tracking-widest px-6 sm:px-12 inline-block">{t}</span>)}
+        </motion.div>
+      </div>
+      {isAdmin && (
+        <button onClick={onEdit} className="absolute right-2 sm:right-6 z-50 flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-black/40 backdrop-blur-md text-white opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all shadow-md" title="Editar Anuncio">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+        </button>
+      )}
+    </div>
+  );
 };
 
-export default function Home() {
-  const [usuarioLogueado, setUsuarioLogueado] = useState<string | null>(null);
-  const [nombreSeleccionado, setNombreSeleccionado] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [errorLogin, setErrorLogin] = useState('');
-  const [vistaPrincipal, setVistaPrincipal] = useState<'PROPUESTAS' | 'POSTEOS'>('PROPUESTAS');
-  
-  const [ordenJuntadas, setOrdenJuntadas] = useState<'RECIENTES' | 'PROXIMAS'>('RECIENTES');
-  const [menuFiltroAbierto, setMenuFiltroAbierto] = useState(false);
+const CarruselBanners = ({ banners, onEdit, isDark, isAdmin }: { banners: any[], onEdit: () => void, isDark: boolean, isAdmin: boolean }) => {
+  const [actual, setActual] = useState(0);
+  const [imgCargada, setImgCargada] = useState(false);
 
-  const [juntadas, setJuntadas] = useState<any[]>([]);
-  const [usuariosDB, setUsuariosDB] = useState<any[]>([]);
-  const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
-  const [juntadaEnEdicion, setJuntadaEnEdicion] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
+  useEffect(() => {
+    if (banners.length <= 1) return;
+    const intervalo = setInterval(() => setActual((prev) => (prev === banners.length - 1 ? 0 : prev + 1)), 5000);
+    return () => clearInterval(intervalo);
+  }, [banners.length]);
 
+  useEffect(() => { if (actual >= banners.length) setActual(0); }, [banners, actual]);
+  useEffect(() => {
+    setImgCargada(false);
+    if (!banners[actual]) return;
+    const isMobile = window.innerWidth < 640;
+    const src = isMobile ? banners[actual].imgMobile : banners[actual].imgDesktop;
+    const img = new Image();
+    img.onload = () => setImgCargada(true);
+    img.src = src;
+    if (img.complete) setImgCargada(true);
+  }, [actual, banners]);
+
+  if (banners.length === 0) {
+    if (!isAdmin) return null;
+    return (
+      <div className={`relative w-full rounded-[1.5rem] border-2 border-dashed flex flex-col items-center justify-center p-8 sm:p-16 transition-colors ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-50'}`}>
+        <span className="text-3xl mb-2 opacity-50">🖼️</span>
+        <p className={`text-xs font-medium uppercase tracking-wider opacity-50 ${isDark ? 'text-white' : 'text-slate-900'}`}>No hay banners activos</p>
+        <button onClick={onEdit} className="mt-4 px-4 py-2 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl shadow-md hover:bg-violet-700 transition-all">+ Agregar Banner</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full rounded-[1.5rem] overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800 group">
+      {isAdmin && (
+        <button onClick={onEdit} className="absolute top-3 right-3 z-50 flex items-center justify-center w-8 h-8 rounded-full bg-black/50 backdrop-blur-md text-white border border-white/20 opacity-0 group-hover:opacity-100 hover:bg-violet-600 hover:border-violet-500 transition-all shadow-lg" title="Gestionar Banners">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+        </button>
+      )}
+      <div className="relative w-full aspect-[1080/600] md:aspect-[1920/650]">
+        {/* Skeleton shimmer — visible mientras la imagen no cargó */}
+        <div className={`absolute inset-0 transition-opacity duration-500 ${imgCargada ? 'opacity-0 pointer-events-none' : 'opacity-100'} ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
+          <div className="absolute inset-0 animate-pulse" style={{ background: isDark ? 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%)' : 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
+        </div>
+        <style>{`@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`}</style>
+        <AnimatePresence initial={false}>
+          {imgCargada && banners[actual] && (
+            <motion.a key={actual} href={banners[actual]?.link || '#'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5, ease: "easeInOut" }} className="absolute inset-0 block cursor-pointer"
+              style={{ backgroundImage: `url(${banners[actual].imgDesktop})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+              <div className="sm:hidden absolute inset-0" style={{ backgroundImage: `url(${banners[actual].imgMobile})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+            </motion.a>
+          )}
+        </AnimatePresence>
+      </div>
+      {banners.length > 1 && (
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10">
+          {banners.map((_, i) => (
+            <button key={i} onClick={() => setActual(i)} className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full transition-all duration-300 ${actual === i ? 'bg-white scale-125 shadow-md' : 'bg-white/50 hover:bg-white/80'}`} aria-label={`Ver banner ${i + 1}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SliderTarjeta = ({ imagenes, alt, isDark }: { imagenes: string[], alt: string, isDark: boolean }) => {
+  const [actual, setActual] = useState(0);
+  return (
+    <div className="relative w-full h-full group/slider overflow-hidden bg-black/5 dark:bg-black/20">
+      <AnimatePresence initial={false}>
+        <motion.img key={actual} initial={{ opacity: 0, scale: 1.05 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1 }} transition={{ duration: 0.3, ease: "easeOut" }} src={imagenes[actual] || ''} alt={`${alt} - Foto ${actual + 1}`} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover/slider:scale-105" decoding="async" loading="lazy" />
+      </AnimatePresence>
+      {imagenes.length > 1 && (
+        <>
+          <button onClick={(e) => { e.stopPropagation(); setActual(p => p === 0 ? imagenes.length - 1 : p - 1); }} className="absolute left-1.5 sm:left-2 top-1/2 -translate-y-1/2 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center opacity-0 group-hover/slider:opacity-100 hover:bg-black/60 transition-all z-30"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+          <button onClick={(e) => { e.stopPropagation(); setActual(p => p === 0 ? imagenes.length - 1 : p - 1); }} className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center opacity-0 group-hover/slider:opacity-100 hover:bg-black/60 transition-all z-30"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default function CatalogoNotebooks() {
   const [isDark, setIsDark] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [estaCargandoDB, setEstaCargandoDB] = useState(true);
+  const [estaPublicando, setEstaPublicando] = useState(false);
+  
+  const [productos, setProductos] = useState<any[]>([]);
+  
+  // Estados para Banners y Anuncio
+  const [banners, setBanners] = useState<any[]>(MOCK_BANNERS_INICIALES);
+  const [estaGuardandoBanners, setEstaGuardandoBanners] = useState(false);
+  const [textoAnuncio, setTextoAnuncio] = useState('🔥 10% DE DESCUENTO PAGANDO CON TRANSFERENCIA ESTE FIN DE SEMANA 🔥');
+  const [textoAnuncioDraft, setTextoAnuncioDraft] = useState('🔥 10% DE DESCUENTO PAGANDO CON TRANSFERENCIA ESTE FIN DE SEMANA 🔥');
+  
+  const [menuFiltroAbierto, setMenuFiltroAbierto] = useState(false);
+  const [ordenamiento, setOrdenamiento] = useState<'NUEVOS' | 'PRECIO_MENOR' | 'PRECIO_MAYOR'>('NUEVOS');
 
-  const [menuPerfilAbierto, setMenuPerfilAbierto] = useState(false);
-  const [passwordVieja, setPasswordVieja] = useState('');
-  const [nuevaPassword, setNuevaPassword] = useState('');
-  const [nuevaFotoUrl, setNuevaFotoUrl] = useState('');
-  const [fotoFile, setFotoFile] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
-  const [comentariosInputs, setComentariosInputs] = useState<Record<number, string>>({});
-
-  const [tipoJuntada, setTipoJuntada] = useState<'IRL' | 'DISCORD'>('IRL');
-  const [nuevoTitulo, setNuevoTitulo] = useState('');
-  const [fechaSel, setFechaSel] = useState(''); 
-  const [horaSel, setHoraSel] = useState(''); 
-  const [opcionSede, setOpcionSede] = useState<'FIJA' | 'VOTACION' | 'CUSTOM'>('FIJA');
-  const [sedeFija, setSedeFija] = useState('Casa de Tomas');
-  const [sedePersonalizadaInput, setSedePersonalizadaInput] = useState('');
-  const [candidatosSede, setCandidatosSede] = useState<string[]>([]);
+  const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
+  const [productoEnEdicion, setProductoEnEdicion] = useState<number | null>(null);
+  const [productoSeleccionado, setProductoSeleccionado] = useState<any | null>(null);
+  const [idxImagenModal, setIdxImagenModal] = useState(0); 
+  
+  const [textoSpecs, setTextoSpecs] = useState('');
+  const [descripcionInput, setDescripcionInput] = useState('');
+  const [precioInput, setPrecioInput] = useState('');
+  const [precioOfertaInput, setPrecioOfertaInput] = useState('');
+  const [descuentoInput, setDescuentoInput] = useState('');
+  const [condicionInput, setCondicionInput] = useState('Excelente Estado');
   const [tagsSel, setTagsSel] = useState<string[]>([]);
-  const [notas, setNotas] = useState('');
-  const [imagenJuntada, setImagenJuntada] = useState<File | null>(null);
-  const [imagenJuntadaPreview, setImagenJuntadaPreview] = useState<string | null>(null);
+  
+  // Imágenes Productos
+  const [imagenesArchivos, setImagenesArchivos] = useState<ImagenPreview[]>([]); 
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-  const [posteos, setPosteos] = useState<any[]>([]);
-  const [limitePosteos, setLimitePosteos] = useState(6);
-  const [mostrandoFormPosteo, setMostrandoFormPosteo] = useState(false);
-  const [textoPost, setTextoPost] = useState('');
-  const [imagenPost, setImagenPost] = useState<File | null>(null);
-  const [imagenPostPreview, setImagenPostPreview] = useState<string | null>(null);
-  const [esAnonimo, setEsAnonimo] = useState(false);
-  const [comentariosPostInputs, setComentariosPostInputs] = useState<Record<number, string>>({});
-  const [comentarioAnonimoPost, setComentarioAnonimoPost] = useState<Record<number, boolean>>({});
+  // Imágenes Gestor Promos
+  const [mostrandoGestorPromos, setMostrandoGestorPromos] = useState(false);
+  const [nuevoBannerDesktop, setNuevoBannerDesktop] = useState('');
+  const [nuevoBannerDesktopFile, setNuevoBannerDesktopFile] = useState<File | null>(null);
+  const [nuevoBannerMobile, setNuevoBannerMobile] = useState('');
+  const [nuevoBannerMobileFile, setNuevoBannerMobileFile] = useState<File | null>(null);
+  const [nuevoBannerLink, setNuevoBannerLink] = useState('');
 
-  const [discordData, setDiscordData] = useState<any>(null);
-  const [discordLoading, setDiscordLoading] = useState(true);
+  const [carrito, setCarrito] = useState<{producto: typeof productos[0], cantidad: number}[]>([]);
+  const [carritoAbierto, setCarritoAbierto] = useState(false);
 
+  const [mostrandoCheckout, setMostrandoCheckout] = useState(false);
+  const [datosCliente, setDatosCliente] = useState({ nombre: '', whatsapp: '', email: '', direccion: '', linkMaps: '', notas: '' });
+  const [tipoEnvio, setTipoEnvio] = useState<'retiro' | 'delivery' | 'encomienda' | null>(null);
+  const [metodoPago, setMetodoPago] = useState<'transferencia' | 'tarjeta' | null>(null);
+  const [obteniendoUbicacion, setObteniendoUbicacion] = useState(false);
+
+  // ========================================================
+  // 🚀 CONEXIÓN A SUPABASE AL INICIAR
+  // ========================================================
   useEffect(() => {
     setIsMounted(true);
-    setIsDark(localStorage.getItem('tema_juntadas') === 'dark');
-    setUsuarioLogueado(localStorage.getItem('juntadas_user'));
-    
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      setLimitePosteos(4);
-    }
+    const temaGuardado = localStorage.getItem('tema_tienda');
+    if (temaGuardado === 'dark' || (!temaGuardado && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) setIsDark(true);
+
+    const verificarSesionYCargarDatos = async () => {
+      // 1. Verificamos si es admin
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsAdmin(!!session);
+
+      // Listener por si iniciamos/cerramos sesión
+      supabase.auth.onAuthStateChange((_event, session) => {
+        setIsAdmin(!!session);
+      });
+
+      // 2. Traemos datos de la BD
+      cargarProductosDB();
+      cargarBannersDB();
+      cargarAnuncioDB();
+    };
+
+    verificarSesionYCargarDatos();
   }, []);
 
-  useEffect(() => {
-    const cargarDatos = async () => {
-      const [resJuntadas, resUsuarios, resPosteos] = await Promise.all([
-        supabase.from('juntadas').select('*').order('id', { ascending: false }),
-        supabase.from('usuarios').select('*'),
-        supabase.from('posteos').select('*').order('id', { ascending: false })
-      ]);
-      
-      if (resJuntadas.data) setJuntadas(resJuntadas.data);
-      if (resUsuarios.data) setUsuariosDB(resUsuarios.data);
-      
-      if (!resPosteos.error && resPosteos.data) {
-        setPosteos(resPosteos.data.map(p => ({ ...p, imagenUrl: p.imagenurl ?? p.imagenUrl })));
-      } else if (resPosteos.error) console.error("Error al cargar posteos:", resPosteos.error.message);
-
-      setLoading(false);
-    };
+  const cargarProductosDB = async () => {
+    setEstaCargandoDB(true);
+    const { data, error } = await supabase
+      .from('productos')
+      .select('*')
+      .order('id', { ascending: false });
     
-    cargarDatos();
-
-    const subs = ['juntadas', 'usuarios', 'posteos'].map(table => 
-      supabase.channel(`${table}_channel`).on('postgres_changes', { event: '*', schema: 'public', table }, cargarDatos).subscribe()
-    );
-
-    const fetchDiscord = async () => {
-      try {
-        const res = await fetch(`/api/discord?t=${Date.now()}`);
-        const data = await res.json();
-        setDiscordData((prev: any) => data.errorMensaje ? (prev?.channels ? prev : data) : data);
-      } catch (error) {
-        setDiscordData((prev: any) => prev?.channels ? prev : { errorMensaje: 'ERROR DE CONEXIÓN LOCAL' });
-      } finally {
-        setDiscordLoading(false);
-      }
-    };
+    if (error) console.error("Error cargando productos:", error);
+    else if (data) setProductos(data);
     
-    fetchDiscord();
-    const discordInterval = setInterval(fetchDiscord, 5000);
+    setEstaCargandoDB(false);
+  };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchDiscord();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      subs.forEach(s => supabase.removeChannel(s));
-      clearInterval(discordInterval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []); 
-
-  useEffect(() => {
-    const user = usuariosDB.find(u => u.nombre === usuarioLogueado);
-    if (user) {
-      if (user.tema_oscuro !== undefined) {
-        setIsDark(user.tema_oscuro);
-        localStorage.setItem('tema_juntadas', user.tema_oscuro ? 'dark' : 'light');
-      }
-      
-      if (user.preferencia_orden) {
-        setOrdenJuntadas(user.preferencia_orden);
-        localStorage.setItem('orden_juntadas', user.preferencia_orden);
-      } else {
-        const cachedOrden = localStorage.getItem('orden_juntadas') as 'RECIENTES' | 'PROXIMAS';
-        if (cachedOrden) setOrdenJuntadas(cachedOrden);
-      }
-    }
-  }, [usuarioLogueado, usuariosDB]);
-
-  const cambiarOrden = async (nuevoOrden: 'RECIENTES' | 'PROXIMAS') => {
-    setOrdenJuntadas(nuevoOrden);
-    localStorage.setItem('orden_juntadas', nuevoOrden);
-    if (usuarioLogueado) {
-      await supabase.from('usuarios').update({ preferencia_orden: nuevoOrden }).eq('nombre', usuarioLogueado);
+  const cargarBannersDB = async () => {
+    const { data, error } = await supabase.from('banners').select('*').order('id', { ascending: true });
+    if (error) {
+      console.warn("Aviso: La tabla 'banners' no está configurada en Supabase todavía o hay un error:", error);
+    } else if (data && data.length > 0) {
+      setBanners(data);
     }
   };
 
-  const toggleTema = async () => {
+  const cargarAnuncioDB = () => {
+    const guardado = localStorage.getItem('texto_anuncio_tienda');
+    if (guardado !== null) {
+      setTextoAnuncio(guardado);
+      setTextoAnuncioDraft(guardado);
+    }
+  };
+
+  const guardarAnuncioDB = (texto: string) => {
+    localStorage.setItem('texto_anuncio_tienda', texto);
+  };
+
+  useEffect(() => {
+    const normal = Number(precioInput);
+    const oferta = Number(precioOfertaInput);
+    if (normal > 0 && oferta > 0 && oferta < normal) setDescuentoInput(Math.round(((normal - oferta) / normal) * 100).toString());
+    else if (!oferta || oferta >= normal) setDescuentoInput('');
+  }, [precioInput, precioOfertaInput]);
+
+  useEffect(() => {
+    document.body.style.overflow = (productoSeleccionado || carritoAbierto || mostrandoCheckout || mostrandoGestorPromos) ? 'hidden' : 'auto';
+    if (!productoSeleccionado && !(productoSeleccionado || carritoAbierto || mostrandoCheckout || mostrandoGestorPromos)) setIdxImagenModal(0);
+    return () => { document.body.style.overflow = 'auto'; };
+  }, [productoSeleccionado, carritoAbierto, mostrandoCheckout, mostrandoGestorPromos]);
+
+  const toggleTema = () => {
     const nuevoTema = !isDark;
     setIsDark(nuevoTema);
-    localStorage.setItem('tema_juntadas', nuevoTema ? 'dark' : 'light');
-    if (usuarioLogueado) await supabase.from('usuarios').update({ tema_oscuro: nuevoTema }).eq('nombre', usuarioLogueado);
+    localStorage.setItem('tema_tienda', nuevoTema ? 'dark' : 'light');
   };
 
-  const getFotoUsuario = (nombre: string) => {
-    if (nombre === 'ANÓNIMO') return 'https://i.imgur.com/6oP3Kex.png';
-    return usuariosDB.find(u => u.nombre === nombre)?.foto_perfil || `https://api.dicebear.com/7.x/avataaars/svg?seed=${nombre}`;
-  };
+  const formatearPrecio = (precio: number) => `${new Intl.NumberFormat('es-PY', { maximumFractionDigits: 0 }).format(precio)}gs`;
 
-  const intentarLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nombreSeleccionado) return setErrorLogin('Falta elegir quién sos.');
+  // ========================================================
+  // 🚀 LÓGICA DE GESTIÓN DE BANNERS (Con Compresión)
+  // ========================================================
+  const manejarSubidaImagenBanner = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'desktop' | 'mobile') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Comprimimos el banner al momento de seleccionarlo (máximo 1920px o 1080px de ancho)
+    const compressedFile = await comprimirImagen(file, tipo === 'desktop' ? 1920 : 1080, 0.85);
+    const url = URL.createObjectURL(compressedFile);
     
-    let user = usuariosDB.find(u => u.nombre === nombreSeleccionado) || (await supabase.from('usuarios').select('*').eq('nombre', nombreSeleccionado).single()).data;
-    
-    if (user?.password === passwordInput) {
-      setUsuarioLogueado(nombreSeleccionado);
-      localStorage.setItem('juntadas_user', nombreSeleccionado);
-      setErrorLogin('');
-      if(user.tema_oscuro !== undefined) {
-        setIsDark(user.tema_oscuro);
-        localStorage.setItem('tema_juntadas', user.tema_oscuro ? 'dark' : 'light');
-      }
-    } else setErrorLogin('Contraseña incorrecta');
+    if (tipo === 'desktop') {
+      setNuevoBannerDesktop(url);
+      setNuevoBannerDesktopFile(compressedFile);
+    } else {
+      setNuevoBannerMobile(url);
+      setNuevoBannerMobileFile(compressedFile);
+    }
   };
 
-  const comprimirImagen = (file: File, maxWidth: number): Promise<File> => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = e => {
-      const img = new Image();
-      img.src = e.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let { width, height } = img;
-        if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
-        canvas.width = width; canvas.height = height;
-        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
-        canvas.toBlob(blob => blob ? resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg', lastModified: Date.now() })) : reject(new Error('Error al comprimir')), 'image/jpeg', 0.7);
-      };
-      img.onerror = reject;
-    };
-    reader.onerror = reject;
-  });
-
-  const subirImagenAlStorage = async (file: File, folder: string) => {
-    try {
-      const archivoComprimido = await comprimirImagen(file, folder === 'perfiles' ? 400 : 800);
-      const filePath = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2,9)}.jpg`;
-      const { error } = await supabase.storage.from('fotos').upload(filePath, archivoComprimido);
-      return error ? null : supabase.storage.from('fotos').getPublicUrl(filePath).data.publicUrl;
-    } catch { return null; }
-  };
-
-  const guardarPerfil = async () => {
-    const userActual = usuariosDB.find(u => u.nombre === usuarioLogueado);
-    if (!userActual) return;
-
-    if (nuevaPassword.trim() && passwordVieja !== userActual.password) {
-      alert("❌ La contraseña actual es incorrecta.");
-      return;
-    }
-
-    setIsUploading(true);
-    let finalFotoUrl = userActual.foto_perfil;
-    
-    if (fotoFile) {
-      const uploadedUrl = await subirImagenAlStorage(fotoFile, 'perfiles');
-      if (!uploadedUrl) {
-        alert("No se pudo subir la foto.");
-      } else {
-        finalFotoUrl = uploadedUrl;
-      }
-    } else if (nuevaFotoUrl.trim()) {
-      finalFotoUrl = nuevaFotoUrl.trim();
-    }
-
-    const { error } = await supabase.from('usuarios').update({ password: nuevaPassword.trim() || userActual.password, foto_perfil: finalFotoUrl }).eq('nombre', usuarioLogueado);
-    
-    if (error) {
-      alert("❌ Error al guardar: " + error.message);
-    } else { 
-      setMenuPerfilAbierto(false); 
-      setPasswordVieja(''); 
-      setNuevaPassword(''); 
-      setNuevaFotoUrl(''); 
-      setFotoFile(null); 
-      setFotoPreview(null); 
-    }
-    setIsUploading(false);
-  };
-
-  const abrirEdicion = (j: any) => {
-    setJuntadaEnEdicion(j.id); setTipoJuntada(j.tipo || 'IRL'); setNuevoTitulo(j.titulo);
-    const date = new Date(j.timestamp);
-    setFechaSel(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
-    setHoraSel(`${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`);
-    setOpcionSede(j.esSedePersonalizada ? 'CUSTOM' : (j.esSedeFija ? 'FIJA' : 'VOTACION'));
-    setSedePersonalizadaInput(j.esSedePersonalizada ? j.sedeFinal || '' : '');
-    setSedeFija(j.esSedeFija ? j.sedeFinal || 'Casa de Tomas' : 'Casa de Tomas');
-    setCandidatosSede(j.candidatos?.map((c: any) => c.nombre) || []);
-    setTagsSel(j.tags || []); setNotas(j.notas || ''); setImagenJuntada(null); setImagenJuntadaPreview(j.imagenUrl || null); setMostrandoFormulario(true);
-  };
-
-  const publicarJuntada = async () => {
-    if (!nuevoTitulo.trim() || !fechaSel || !horaSel.trim()) {
-      alert("Completá título, fecha y hora.");
-      return;
-    }
-    if (tipoJuntada === 'IRL' && opcionSede === 'CUSTOM' && !sedePersonalizadaInput.trim()) {
-      alert("Ingresá la sede personalizada.");
-      return;
-    }
-    if (!juntadaEnEdicion && !imagenJuntada) {
-      alert("¡Tenés que agregar una foto de portada sí o sí!");
-      return;
-    }
-    
-    setIsUploading(true);
-    let finalImageUrl = juntadas.find(x => x.id === juntadaEnEdicion)?.imagenUrl;
-
-    if (imagenJuntada) {
-      const uploadedUrl = await subirImagenAlStorage(imagenJuntada, 'juntadas');
-      if (!uploadedUrl) {
-        alert("Error subiendo foto.");
-        setIsUploading(false);
+  const eliminarBanner = async (id: number) => {
+    if (window.confirm("¿Seguro que querés eliminar este banner?")) {
+      const { error } = await supabase.from('banners').delete().eq('id', id);
+      if (error) {
+        alert("Hubo un error al eliminar el banner de la base de datos.");
+        console.error(error);
         return;
       }
-      finalImageUrl = uploadedUrl;
+      setBanners(banners.filter(b => b.id !== id));
+    }
+  };
+
+  const guardarBannerNuevo = async () => {
+    if (!nuevoBannerDesktopFile || !nuevoBannerMobileFile) return alert("⚠️ Tenés que subir ambas imágenes (Web y Celular) para guardar el banner.");
+    
+    setEstaGuardandoBanners(true);
+
+    try {
+      const extD = nuevoBannerDesktopFile.name.split('.').pop();
+      const nameD = `desktop-${Date.now()}-${Math.random().toString(36).substring(7)}.${extD}`;
+      await supabase.storage.from('laptops').upload(`banners/${nameD}`, nuevoBannerDesktopFile);
+      const { data: urlD } = supabase.storage.from('laptops').getPublicUrl(`banners/${nameD}`);
+
+      const extM = nuevoBannerMobileFile.name.split('.').pop();
+      const nameM = `mobile-${Date.now()}-${Math.random().toString(36).substring(7)}.${extM}`;
+      await supabase.storage.from('laptops').upload(`banners/${nameM}`, nuevoBannerMobileFile);
+      const { data: urlM } = supabase.storage.from('laptops').getPublicUrl(`banners/${nameM}`);
+
+      const { error } = await supabase.from('banners').insert([{ 
+        imgDesktop: urlD.publicUrl, 
+        imgMobile: urlM.publicUrl, 
+        link: nuevoBannerLink || '#', 
+        alt: 'Banner Promocional' 
+      }]);
+
+      if (error) throw error;
+
+      alert("✅ Banner guardado exitosamente en la tienda.");
+      
+      setNuevoBannerDesktop(''); setNuevoBannerMobile(''); setNuevoBannerLink('');
+      setNuevoBannerDesktopFile(null); setNuevoBannerMobileFile(null);
+      
+      await cargarBannersDB(); 
+    } catch (error) {
+      console.error("Error guardando banner:", error);
+      alert("⚠️ Hubo un error al guardar. Asegurate de tener creada la tabla 'banners' en tu Supabase.");
+    }
+    setEstaGuardandoBanners(false);
+  };
+
+  // ========================================================
+  // 🛒 CARRITO Y CHECKOUT
+  // ========================================================
+  const agregarAlCarrito = (producto: any) => {
+    setCarrito(prev => prev.find(item => item.producto.id === producto.id) ? prev.map(item => item.producto.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item) : [...prev, { producto, cantidad: 1 }]);
+  };
+
+  const eliminarDelCarrito = (id: number) => {
+    setCarrito(prev => prev.filter(item => item.producto.id !== id));
+    if (carrito.length === 1 && carrito[0].producto.id === id) setMostrandoCheckout(false);
+  };
+
+  const sumarCantidad = (id: number) => setCarrito(prev => prev.map(item => item.producto.id === id ? { ...item, cantidad: item.cantidad + 1 } : item));
+  const restarCantidad = (id: number) => setCarrito(prev => prev.map(item => item.producto.id === id && item.cantidad > 1 ? { ...item, cantidad: item.cantidad - 1 } : item));
+
+  const totalCarrito = carrito.reduce((acc, item) => acc + ((item.producto.precio_oferta || item.producto.precio) * item.cantidad), 0);
+
+  const obtenerUbicacion = () => {
+    if (!("geolocation" in navigator)) {
+      alert("⚠️ Tu navegador o dispositivo no soporta la función de ubicación.");
+      return;
+    }
+    
+    setObteniendoUbicacion(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const mapLink = `http://googleusercontent.com/maps.google.com/?q=${lat},${lng}`;
+        
+        setDatosCliente(prev => ({ ...prev, linkMaps: mapLink }));
+        setObteniendoUbicacion(false);
+      },
+      (error) => {
+        console.error("Error obteniendo ubicación:", error);
+        alert("⚠️ No pudimos acceder a tu ubicación. Asegurate de tener el GPS activado.");
+        setObteniendoUbicacion(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const enviarPedidoWhatsApp = () => {
+    if (!datosCliente.nombre || !datosCliente.whatsapp) return alert("⚠️ Por favor completá tu Nombre y WhatsApp para continuar.");
+    if (!tipoEnvio) return alert("⚠️ Por favor seleccioná un tipo de envío.");
+    if (!metodoPago) return alert("⚠️ Por favor seleccioná un método de pago.");
+    if ((tipoEnvio === 'delivery' || tipoEnvio === 'encomienda') && !datosCliente.direccion && !datosCliente.linkMaps) return alert("⚠️ Por favor ingresá tu dirección o el link de Google Maps para el envío.");
+    
+    let m = `¡Hola! Quiero hacer un pedido 💻\n\n*🛒 RESUMEN DEL PEDIDO:*\n`;
+    carrito.forEach(item => m += `- ${item.cantidad}x ${item.producto.marca} ${item.producto.modelo} (${formatearPrecio(item.producto.precio_oferta || item.producto.precio)})\n`);
+    m += `*Total a pagar:* ${formatearPrecio(totalCarrito)}\n\n*👤 MIS DATOS:*\nNombre: ${datosCliente.nombre}\nWhatsApp: ${datosCliente.whatsapp}\n${datosCliente.email ? `Email: ${datosCliente.email}\n` : ''}\n*📦 ENVÍO:*\n`;
+    m += `${{ retiro: '🏠 Paso a retirar del local', delivery: '🚚 Envío gratis con delivery propio', encomienda: '📦 Envío por transportadora (Encomienda)' }[tipoEnvio]}\n`;
+    if (tipoEnvio !== 'retiro') {
+      if (datosCliente.direccion) m += `Dirección/Ref: ${datosCliente.direccion}\n`;
+      if (datosCliente.linkMaps) m += `Ubicación (Maps): ${datosCliente.linkMaps}\n`;
+    }
+    m += `\n*💳 MÉTODO DE PAGO:*\n${{ transferencia: '💸 Transferencia bancaria o efectivo', tarjeta: '💳 Tarjeta de crédito (Visa/Mastercard) o Apple/Google Pay' }[metodoPago]}\n\n`;
+    if (datosCliente.notas) m += `*📝 NOTAS ADICIONALES:*\n${datosCliente.notas}\n`;
+
+    window.open(`https://api.whatsapp.com/send?phone=595976654321&text=${encodeURIComponent(m)}`, '_blank');
+  };
+
+  // ========================================================
+  // 📸 LÓGICA DE SUBIDA DE IMÁGENES (Con Compresión)
+  // ========================================================
+  const manejarSubidaImagen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    if (imagenesArchivos.length + files.length > 5) return alert("⚠️ Solo podés subir un máximo de 5 fotos por publicación.");
+    
+    // Procesamos y comprimimos cada imagen asíncronamente
+    const nuevosArchivos: ImagenPreview[] = [];
+    for (const file of files) {
+      // Comprimimos la foto pesada del iPhone a un máximo de 1200px de ancho y 85% de calidad
+      const compressedFile = await comprimirImagen(file, 1200, 0.85);
+      nuevosArchivos.push({
+        file: compressedFile,
+        url: URL.createObjectURL(compressedFile)
+      });
     }
 
-    const [y, m, d] = fechaSel.split('-'); const [h, min] = horaSel.split(':');
-    const targetDate = new Date(Number(y), Number(m) - 1, Number(d), Number(h) || 0, Number(min) || 0);
-    const esSedeFija = opcionSede === 'FIJA'; const esSedePersonalizada = opcionSede === 'CUSTOM';
-    const sedeFinalDeterminada = tipoJuntada === 'DISCORD' ? 'Discord' : (esSedeFija ? sedeFija : (esSedePersonalizada ? sedePersonalizadaInput.trim() : null));
+    setImagenesArchivos(prev => [...prev, ...nuevosArchivos]);
+  };
 
-    const jData = {
-      tipo: tipoJuntada, titulo: nuevoTitulo, fechaDisplay: formatearFechaDisplay(fechaSel), horaDisplay: `${horaSel} PM`, timestamp: targetDate.getTime(),
-      esSedeFija: tipoJuntada === 'DISCORD' || esSedeFija, esSedePersonalizada: tipoJuntada !== 'DISCORD' && esSedePersonalizada, sedeFinal: sedeFinalDeterminada,
-      candidatos: (tipoJuntada === 'DISCORD' || opcionSede !== 'VOTACION') ? [] : candidatosSede.map(c => juntadas.find(x => x.id === juntadaEnEdicion)?.candidatos?.find((old: any) => old.nombre === c) || { nombre: c, votantes: [] }),
-      tags: tagsSel, notas: notas.trim(), imagenUrl: finalImageUrl
+  const eliminarImagenPreview = (index: number) => setImagenesArchivos(prev => prev.filter((_, i) => i !== index));
+
+  const resetearFormulario = () => {
+    setProductoEnEdicion(null); setTextoSpecs(''); setDescripcionInput(''); setPrecioInput(''); setPrecioOfertaInput(''); setDescuentoInput(''); setCondicionInput('Excelente Estado'); setTagsSel([]); setImagenesArchivos([]); setMostrandoFormulario(false); setEstaPublicando(false);
+  };
+
+  const abrirEdicion = (p: any) => {
+    setProductoEnEdicion(p.id); 
+    setTextoSpecs(`${p.marca} ${p.modelo} | ${p.procesador} | ${p.ram} | ${p.disco} | ${p.pantalla}`); 
+    setDescripcionInput(p.descripcion || ''); 
+    setPrecioInput(p.precio.toString()); 
+    setPrecioOfertaInput(p.precio_oferta ? p.precio_oferta.toString() : ''); 
+    setDescuentoInput(p.descuento ? p.descuento.toString() : ''); 
+    setCondicionInput(p.condicion_estetica); 
+    setTagsSel(p.tags || []); 
+    
+    const imagenesParaEdicion = (p.imagenes || []).map((imgUrl: string) => ({
+      file: null,
+      url: imgUrl
+    }));
+    setImagenesArchivos(imagenesParaEdicion); 
+    setMostrandoFormulario(true);
+  };
+
+  const eliminarProducto = async (id: number) => {
+    if (window.confirm("¿Seguro que querés eliminar esta notebook del catálogo?")) {
+      const { error } = await supabase.from('productos').delete().eq('id', id);
+      if (error) {
+        alert("Hubo un error al eliminar.");
+        console.error(error);
+        return;
+      }
+      
+      setProductos(prev => prev.filter(p => p.id !== id));
+      if (productoSeleccionado?.id === id) setProductoSeleccionado(null);
+      eliminarDelCarrito(id);
+    }
+  };
+
+  // ========================================================
+  // 🚀 FUNCIÓN PRINCIPAL DE PUBLICAR (Sube Fotos y a BD)
+  // ========================================================
+  const publicarProducto = async () => {
+    if (imagenesArchivos.length === 0) return alert("⚠️ ¡Tenés que agregar al menos una foto de la notebook!");
+    if (!textoSpecs.includes('|')) return alert("⚠️ El texto no tiene el formato correcto. Faltan los separadores '|'.");
+    if (!precioInput || isNaN(Number(precioInput))) return alert("⚠️ Por favor ingresá un precio válido (solo números).");
+
+    setEstaPublicando(true);
+
+    const partes = textoSpecs.split('|').map(str => str.trim());
+    if (partes.length < 5) {
+      setEstaPublicando(false);
+      return alert("⚠️ Parece que faltan datos. Tienen que ser 5 bloques separados por '|'.");
+    }
+
+    let urlsFinales: string[] = [];
+    
+    for (const img of imagenesArchivos) {
+      if (img.file) {
+        // Aseguramos la extensión por si viene del canvas compreso
+        const ext = img.file.name.split('.').pop() || 'jpg';
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('laptops')
+          .upload(fileName, img.file);
+
+        if (uploadError) {
+          console.error("Error subiendo foto:", uploadError);
+          alert("Hubo un error subiendo una de las fotos. Reintentá.");
+          setEstaPublicando(false);
+          return;
+        }
+
+        const { data } = supabase.storage.from('laptops').getPublicUrl(fileName);
+        urlsFinales.push(data.publicUrl);
+      } else {
+        urlsFinales.push(img.url);
+      }
+    }
+
+    const [marcaModeloBruto, procesadorBruto, ramExtraida, discoExtraido, pantallaExtraida] = partes;
+    const primeraPalabra = marcaModeloBruto.split(' ')[0];
+    
+    const datosProducto = {
+      marca: primeraPalabra, 
+      modelo: marcaModeloBruto.substring(primeraPalabra.length).trim(), 
+      estado: 'USADA', 
+      condicion_estetica: condicionInput,
+      procesador: procesadorBruto.replace(/Intel Core |Intel |th Gen|nd Gen|rd Gen|st Gen/gi, match => match.includes('Gen') ? '° Gen' : '').replace(/AMD Ryzen /gi, 'Ryzen '),
+      pantalla: pantallaExtraida, 
+      disco: discoExtraido, 
+      ram: ramExtraida, 
+      precio: Number(precioInput), 
+      precio_oferta: precioOfertaInput ? Number(precioOfertaInput) : null, 
+      descuento: descuentoInput ? Number(descuentoInput) : null, 
+      disponibilidad: 'En Stock', 
+      tags: tagsSel, 
+      descripcion: descripcionInput || DESCRIPCION_POR_DEFECTO, 
+      imagenes: urlsFinales 
     };
 
-    if (juntadaEnEdicion) await supabase.from('juntadas').update(jData).eq('id', juntadaEnEdicion);
-    else await supabase.from('juntadas').insert([{ ...jData, creador: usuarioLogueado, confirmados: [usuarioLogueado], dudosos: [], rechazados: [], excusas: [], pineado: false }]);
-    
-    setMostrandoFormulario(false); resetForm(); setIsUploading(false);
-  };
-
-  const votarSede = async (juntadaId: number, casaNombre: string) => {
-    const j = juntadas.find(i => i.id === juntadaId);
-    if (!j || j.esSedeFija || j.esSedePersonalizada || j.tipo === 'DISCORD') return;
-    const nuevosCandidatos = j.candidatos.map((c: any) => ({ ...c, votantes: c.nombre === casaNombre ? [...(c.votantes ?? []).filter((v: string) => v !== usuarioLogueado), usuarioLogueado] : (c.votantes ?? []).filter((v: string) => v !== usuarioLogueado) }));
-    setJuntadas(prev => prev.map(i => i.id === juntadaId ? { ...i, candidatos: nuevosCandidatos } : i));
-    supabase.from('juntadas').update({ candidatos: nuevosCandidatos }).eq('id', juntadaId).then();
-  };
-
-  const toggleAsistencia = (juntadaId: number, estado: 'voy' | 'nose' | 'paso') => {
-    const j = juntadas.find(i => i.id === juntadaId);
-    if (!j) return;
-    const [yaEsVoy, yaEsNose, yaEsPaso] = [estado === 'voy' && (j.confirmados ?? []).includes(usuarioLogueado), estado === 'nose' && (j.dudosos ?? []).includes(usuarioLogueado), estado === 'paso' && (j.rechazados ?? []).includes(usuarioLogueado)];
-    let confirmados = (j.confirmados ?? []).filter((u: string) => u !== usuarioLogueado), dudosos = (j.dudosos ?? []).filter((u: string) => u !== usuarioLogueado), rechazados = (j.rechazados ?? []).filter((u: string) => u !== usuarioLogueado), candidatos = j.candidatos;
-
-    if (!(yaEsVoy || yaEsNose || yaEsPaso)) {
-      if (estado === 'voy') confirmados.push(usuarioLogueado);
-      if (estado === 'nose') dudosos.push(usuarioLogueado);
-      if (estado === 'paso') {
-        rechazados.push(usuarioLogueado);
-        if (!j.esSedeFija && !j.esSedePersonalizada && j.tipo !== 'DISCORD' && j.candidatos) candidatos = j.candidatos.map((c: any) => ({ ...c, votantes: (c.votantes ?? []).filter((v: string) => v !== usuarioLogueado) }));
-      }
-    }
-    setJuntadas(prev => prev.map(i => i.id === juntadaId ? { ...i, confirmados, dudosos, rechazados, candidatos } : i));
-    supabase.from('juntadas').update({ confirmados, dudosos, rechazados, candidatos }).eq('id', juntadaId).then();
-  };
-
-  const toggleReaccionPost = async (postId: number, tipo: 'like' | 'dislike') => {
-    const p = posteos.find(x => x.id === postId);
-    if (!p || !usuarioLogueado) return;
-
-    let nuevosLikes = Array.isArray(p.likes) ? [...p.likes] : [];
-    let nuevosDislikes = Array.isArray(p.dislikes) ? [...p.dislikes] : [];
-
-    if (tipo === 'like') {
-      if (nuevosLikes.includes(usuarioLogueado)) {
-        nuevosLikes = nuevosLikes.filter(u => u !== usuarioLogueado);
-      } else {
-        nuevosLikes.push(usuarioLogueado);
-        nuevosDislikes = nuevosDislikes.filter(u => u !== usuarioLogueado);
-      }
+    if (productoEnEdicion) {
+      const { error } = await supabase.from('productos').update(datosProducto).eq('id', productoEnEdicion);
+      if (error) console.error("Error actualizando:", error);
     } else {
-      if (nuevosDislikes.includes(usuarioLogueado)) {
-        nuevosDislikes = nuevosDislikes.filter(u => u !== usuarioLogueado);
-      } else {
-        nuevosDislikes.push(usuarioLogueado);
-        nuevosLikes = nuevosLikes.filter(u => u !== usuarioLogueado);
-      }
+      const { error } = await supabase.from('productos').insert([datosProducto]);
+      if (error) console.error("Error creando:", error);
     }
 
-    setPosteos(prev => prev.map(i => i.id === postId ? { ...i, likes: nuevosLikes, dislikes: nuevosDislikes } : i));
-    supabase.from('posteos').update({ likes: nuevosLikes, dislikes: nuevosDislikes }).eq('id', postId).then();
+    await cargarProductosDB();
+    resetearFormulario();
   };
 
-  const agregarComentario = (id: number, isPost = false) => {
-    const texto = (isPost ? comentariosPostInputs[id] : comentariosInputs[id])?.trim();
-    if (!texto) return;
-    
-    if (isPost) {
-      const p = posteos.find(item => item.id === id);
-      if (!p) return;
-      const nuevosComentarios = [...(p.comentarios ?? []), { usuario: comentarioAnonimoPost[id] ? 'ANÓNIMO' : usuarioLogueado, texto, creador_real: usuarioLogueado, timestamp: Date.now() }];
-      setPosteos(prev => prev.map(i => i.id === id ? { ...i, comentarios: nuevosComentarios } : i));
-      setComentariosPostInputs(prev => ({ ...prev, [id]: '' })); setComentarioAnonimoPost(prev => ({ ...prev, [id]: false }));
-      supabase.from('posteos').update({ comentarios: nuevosComentarios }).eq('id', id).then();
-    } else {
-      const j = juntadas.find(item => item.id === id);
-      if (!j) return;
-      const nuevasExcusas = [...(j.excusas ?? []), { usuario: usuarioLogueado, texto, tipo: 'comentario', timestamp: Date.now() }];
-      setJuntadas(prev => prev.map(i => i.id === id ? { ...i, excusas: nuevasExcusas } : i));
-      setComentariosInputs(prev => ({ ...prev, [id]: '' }));
-      supabase.from('juntadas').update({ excusas: nuevasExcusas }).eq('id', id).then();
-    }
-  };
-
-  const borrarComentario = (id: number, target: string | number, isPost = false) => {
-    if (isPost) {
-      const nuevos = (posteos.find(i => i.id === id)?.comentarios ?? []).filter((_: any, i: number) => i !== target);
-      setPosteos(prev => prev.map(i => i.id === id ? { ...i, comentarios: nuevos } : i));
-      supabase.from('posteos').update({ comentarios: nuevos }).eq('id', id).then();
-    } else {
-      const nuevos = (juntadas.find(i => i.id === id)?.excusas ?? []).filter((e: any) => !(e.usuario === usuarioLogueado && e.texto === target));
-      setJuntadas(prev => prev.map(i => i.id === id ? { ...i, excusas: nuevos } : i));
-      supabase.from('juntadas').update({ excusas: nuevos }).eq('id', id).then();
-    }
-  };
-
-  const eliminarRegistro = async (id: number, isPost = false) => {
-    if (!window.confirm(`¿Seguro que querés eliminar est${isPost ? 'a publicación' : 'a juntada'}?`)) return;
-    if (isPost) { setPosteos(p => p.filter(x => x.id !== id)); await supabase.from('posteos').delete().eq('id', id); }
-    else { await supabase.from('juntadas').delete().eq('id', id); }
-  };
-
-  const compartirWhatsApp = (j: any) => window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(`${j.tipo === 'DISCORD' ? '🎧 *PROPUESTA DISCORD:*' : '🍾 *PROPUESTA IRL:*'} ${j.titulo} ${j.tipo === 'DISCORD' ? '👾' : '🍾'}\n📆 *DÍA:* ${j.fechaDisplay}\n⏰ *HORA:* ${j.horaDisplay}${j.tipo === 'DISCORD' ? '' : `\n${j.esSedePersonalizada ? '📍' : '🏠'} *SEDE:* ${(j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : 'A votar en la app'}`}\n\n👉 *Confirmá tu asistencia:* ${window.location.origin}`)}`, '_blank');
-  const resetForm = () => { setJuntadaEnEdicion(null); setTipoJuntada('IRL'); setNuevoTitulo(''); setFechaSel(''); setHoraSel(''); setTagsSel([]); setCandidatosSede([]); setOpcionSede('FIJA'); setSedePersonalizadaInput(''); setNotas(''); setImagenJuntada(null); setImagenJuntadaPreview(null); };
-
-  const publicarPosteo = async () => {
-    if (!imagenPost) {
-      alert("Tenés que agregar una foto sí o sí para publicar.");
-      return;
-    }
-    setIsUploading(true);
-    const finalImageUrl = await subirImagenAlStorage(imagenPost, 'posteos');
-    if (!finalImageUrl) {
-      alert("Hubo un error subiendo la foto.");
-      setIsUploading(false);
-      return;
-    }
-
-    const { data, error } = await supabase.from('posteos').insert([{ creador: usuarioLogueado, texto: textoPost.trim(), imagenurl: finalImageUrl, anonimo: esAnonimo, timestamp: Date.now(), likes: [], dislikes: [], comentarios: [] }]).select();
-    if (error) {
-      alert(`❌ Error al publicar: ${error.message}`);
-      setIsUploading(false);
-      return;
-    }
-    if (data?.length) setPosteos(prev => [{ ...data[0], imagenUrl: data[0].imagenurl ?? data[0].imagenUrl }, ...prev]);
-    
-    setMostrandoFormPosteo(false); setTextoPost(''); setImagenPost(null); setImagenPostPreview(null); setEsAnonimo(false); setIsUploading(false);
-  };
-
-  const formatearFechaDisplay = (f: string) => f ? `${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][new Date(Number(f.split('-')[0]), Number(f.split('-')[1]) - 1, Number(f.split('-')[2])).getDay()]} ${f.split('-')[2]} de ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][new Date(Number(f.split('-')[0]), Number(f.split('-')[1]) - 1, Number(f.split('-')[2])).getMonth()]}` : '';
-
-  const calcularEstadoTiempo = (t: number) => {
-    if (!t) return { texto: 'CALCULANDO... ⏳', color: 'bg-violet-600' };
-    const diff = t - Date.now(), horas = Math.floor(diff / 3600000), dias = Math.floor(horas / 24);
-    if (diff < 0) return Math.abs(diff) <= 10800000 ? { texto: 'EN CURSO 😄', color: 'bg-violet-600' } : { texto: 'FINALIZADO', color: 'bg-red-500' };
-    return dias > 1 ? { texto: `FALTAN ${dias} DÍAS ⏳`, color: 'bg-violet-600' } : dias === 1 ? { texto: `MAÑANA 📆 `, color: 'bg-violet-600' } : horas >= 1 ? { texto: `FALTAN ${horas} HORAS ⏰`, color: 'bg-violet-600' } : { texto: '¡EN UN RATO! 🔥', color: 'bg-violet-600' };
-  };
-
-  if (loading || !isMounted) return <div className={`min-h-screen ${isDark ? 'bg-slate-950' : 'bg-[#F4F6F8]'} flex items-center justify-center transition-colors duration-300`}><div className="animate-spin text-violet-600 text-2xl">⏳</div></div>;
-
-  const ahoraMs = Date.now(), TRES_HORAS = 10800000;
-  const juntadasOrdenadas = [...juntadas].sort((a, b) => {
-    const aExpirado = ahoraMs >= a.timestamp + TRES_HORAS;
-    const bExpirado = ahoraMs >= b.timestamp + TRES_HORAS;
-
-    if (aExpirado && !bExpirado) return 1;
-    if (!aExpirado && bExpirado) return -1;
-    if (a.pineado && !b.pineado) return -1;
-    if (!a.pineado && b.pineado) return 1;
-
-    if (ordenJuntadas === 'PROXIMAS') {
-      return a.timestamp - b.timestamp;
-    } else {
-      return b.id - a.id;
-    }
+  const productosOrdenados = [...productos].sort((a, b) => {
+    const pA = a.precio_oferta || a.precio, pB = b.precio_oferta || b.precio;
+    return ordenamiento === 'PRECIO_MENOR' ? pA - pB : ordenamiento === 'PRECIO_MAYOR' ? pB - pA : b.id - a.id;
   });
 
-  const canalesConGente = discordData?.channels?.map((c: any) => ({ ...c, members: discordData.members?.filter((m: any) => m.channel_id === c.id) ?? [] })).filter((c: any) => c.members.length > 0) ?? [];
+  const LOGOS_MARCA: { match: (n: string) => boolean; src: string; alt: string; scale?: number }[] = [
+    { match: (n) => n.includes('dell'), src: 'https://www.nicepng.com/png/full/497-4970654_dell-logo-white-dell-f169g.png', alt: 'Dell' },
+    { match: (n) => n.includes('lenovo') || n.includes('thinkpad'), src: 'https://i.imgur.com/LE4aNAE.png', alt: 'Lenovo', scale: 1.4 },
+  ];
+  const getLogoBrand = (marca: string, modelo: string, claseImg: string) => {
+    const nombre = `${marca} ${modelo}`.toLowerCase();
+    const logo = LOGOS_MARCA.find(l => l.match(nombre));
+    if (!logo) return null;
+    return <img src={logo.src} alt={logo.alt} className={claseImg} style={logo.scale ? { transform: `scale(${logo.scale})`, transformOrigin: 'bottom right' } : undefined} />;
+  };
+
+  const getSpecsList = (prod: any) => [
+    { l: 'Procesador', v: prod.procesador, i: "https://shopinverse.com/cdn/shop/files/processor_50656a5a-aaf3-45a6-8690-24e540a0f31a.png?v=1750275262&width=48" },
+    { l: 'Pulgadas', v: prod.pantalla, i: "https://shopinverse.com/cdn/shop/files/laptop_size.png?v=1750275765&width=48" },
+    { l: 'SSD', v: prod.disco, i: "https://shopinverse.com/cdn/shop/files/SD_5b743960-78a8-48bf-b9ef-acdd48f3ae2a.png?v=1751056382&width=48" },
+    { l: 'RAM', v: prod.ram, i: "https://shopinverse.com/cdn/shop/files/ram_dcb67804-7fdb-499b-924e-e30679b9fba9.png?v=1750275811&width=48" }
+  ];
+
+  if (!isMounted) return <div className="min-h-screen bg-[#F4F6F8] dark:bg-slate-950 transition-colors duration-300" />;
 
   const estForm = ESTETICA_FORMULARIO(isDark);
 
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-slate-950' : 'bg-[#F4F6F8]'} transition-colors duration-300 font-sans`}>
-      {!usuarioLogueado && (
-        <main className="flex items-center justify-center p-4 min-h-screen">
-          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={ESTETICA_LOGIN(isDark).contenedor}>
-            <div className="flex justify-center mb-6"><img src="https://i.imgur.com/5hJH1kn.png" alt="Logo" className={`h-10 w-auto object-contain ${isDark ? 'invert opacity-90' : ''}`} /></div>
-            <form onSubmit={intentarLogin} className="space-y-3">
-              <select className={`${ESTETICA_LOGIN(isDark).input} ${RADIO_GENERAL} appearance-none cursor-pointer`} value={nombreSeleccionado} onChange={e => setNombreSeleccionado(e.target.value)}>
-                <option value="">¿Quién sos?</option>
-                {(usuariosDB.length > 0 ? usuariosDB.map(u => u.nombre) : AMIGOS_FALLBACK).map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-              <input type="password" placeholder="Contraseña" className={`${ESTETICA_LOGIN(isDark).input} ${RADIO_GENERAL}`} value={passwordInput} onChange={e => setPasswordInput(e.target.value)} />
-              {errorLogin && <p className="text-red-500 text-[10px] font-black text-center uppercase tracking-widest">{errorLogin}</p>}
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" className={ESTETICA_LOGIN(isDark).boton}>ENTRAR</motion.button>
-            </form>
-          </motion.div>
-        </main>
-      )}
+    <div className={`min-h-screen flex flex-col ${isDark ? 'bg-slate-950' : 'bg-[#F4F6F8]'} transition-colors duration-300 font-sans pb-20`}>
+      <style dangerouslySetInnerHTML={{__html: `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap'); .font-sans { font-family: 'Inter', sans-serif; } .font-display { font-family: 'Space Grotesk', sans-serif; }`}} />
+      <BarraAnuncio texto={textoAnuncio} onEdit={() => setMostrandoGestorPromos(true)} isDark={isDark} isAdmin={isAdmin} />
 
-      {/* FORMULARIO CREAR/EDITAR PROPUESTA */}
-      {usuarioLogueado && mostrandoFormulario && (
-        <main className="p-4 pb-10 min-h-screen flex flex-col items-center justify-center">
-          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={estForm.contenedor}>
+      <nav className="p-4 lg:p-6 flex justify-between items-center max-w-7xl mx-auto w-full relative z-40">
+        <img src={isDark ? "https://i.imgur.com/2lSkLeX.png" : "https://i.imgur.com/jNPKE3H.png"} alt="Easy Laptops Logo" className="h-16 sm:h-20 lg:h-24 w-auto object-contain transition-all duration-300" />
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button onClick={() => setCarritoAbierto(true)} className={`relative flex items-center justify-center w-10 h-10 rounded-full border transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:text-violet-600 hover:border-violet-300 shadow-sm'}`} title="Ver Carrito">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+            {carrito.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-violet-600 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-[#F4F6F8] dark:border-slate-950">{carrito.reduce((acc, item) => acc + item.cantidad, 0)}</span>}
+          </button>
+          <button onClick={toggleTema} className={`flex items-center justify-center w-10 h-10 rounded-full border transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-yellow-400 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-400 hover:text-violet-500 hover:border-violet-300 shadow-sm'}`}>
+            {isDark ? <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> : <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
+          </button>
+          
+          {isAdmin && (
+            <button onClick={() => supabase.auth.signOut()} className="text-[10px] uppercase font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 px-3 py-1 rounded-full ml-2">Salir</button>
+          )}
+        </div>
+      </nav>
+
+      {mostrandoFormulario ? (
+        <main className="p-3 sm:p-4 pb-10 flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-300 w-full overflow-hidden flex-1">
+          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className={estForm.contenedor}>
             <div className="shrink-0">
-              <button onClick={() => { setMostrandoFormulario(false); resetForm(); }} className={`text-[10px] mb-4 uppercase tracking-widest transition-colors font-bold ${isDark ? 'text-slate-500 hover:text-violet-400' : 'text-slate-400 hover:text-violet-600'}`}>← Cancelar</button>
-              <h2 className={`text-xl font-black mb-5 tracking-tighter uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>{juntadaEnEdicion ? 'EDITAR PROPUESTA' : 'NUEVA PROPUESTA'}</h2>
-            </div>
-
-            <div className="flex-1 overflow-y-auto pr-2 pb-4 space-y-5 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-              <div className={`flex gap-2 p-1 rounded-2xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                <button onClick={() => { setTipoJuntada('IRL'); setTagsSel([]); }} className={`flex-1 h-10 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest ${tipoJuntada === 'IRL' ? (isDark ? 'bg-slate-700 text-emerald-400 border-slate-600 border shadow-sm' : 'bg-white text-emerald-600 shadow-sm border border-slate-200') : (isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}>📍 IRL</button>
-                <button onClick={() => { setTipoJuntada('DISCORD'); setTagsSel([]); }} className={`flex-1 h-10 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest flex items-center justify-center gap-1.5 ${tipoJuntada === 'DISCORD' ? 'bg-[#5865F2] text-white shadow-md' : (isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 127.14 96.36" fill="currentColor" className={`w-3.5 h-3.5 ${tipoJuntada === 'DISCORD' ? 'text-white' : (isDark ? 'text-white' : 'text-[#5865F2]')}`}><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14h0C127.86,52.43,121.56,29.1,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.31,60,73.31,53s5-12.74,11.43-12.74S96.3,46,96.19,53,91.08,65.69,84.69,65.69Z"/></svg>DISCORD</button>
-              </div>
-
-              <div><label className={estForm.label}>¿Qué se hace?</label><input type="text" placeholder={tipoJuntada === 'IRL' ? "Ej: Asadito en lo de Uli" : "Ej: Torneo de Rocket League"} className={`${estForm.input} ${RADIO_GENERAL}`} value={nuevoTitulo} onChange={e => setNuevoTitulo(e.target.value)} /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className={estForm.label}>Día</label><input type="date" className={`${estForm.input} ${RADIO_GENERAL} text-xs`} value={fechaSel} onChange={e => setFechaSel(e.target.value)} /></div>
-                <div><label className={estForm.label}>Hora</label><div className="relative"><input type="text" placeholder="21:30" className={`${estForm.input} ${RADIO_GENERAL} pr-8`} value={horaSel} onChange={e => setHoraSel(e.target.value.replace(/\D/g, '').replace(/^(\d{2})(\d{1,2})/, '$1:$2').slice(0, 5))} /><span className={`absolute right-3 top-3 text-[10px] font-black ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>PM</span></div></div>
-              </div>
-
-              {tipoJuntada === 'IRL' && (
-                  <div>
-                    <label className={estForm.label}>Sede</label>
-                    <div className="flex gap-2 mb-3"><button onClick={() => setOpcionSede('FIJA')} className={opcionSede === 'FIJA' ? estForm.btnOpcionActivo : estForm.btnOpcionInactivo}>FIJA</button><button onClick={() => setOpcionSede('VOTACION')} className={opcionSede === 'VOTACION' ? estForm.btnOpcionActivo : estForm.btnOpcionInactivo}>VOTACIÓN</button><button onClick={() => setOpcionSede('CUSTOM')} className={opcionSede === 'CUSTOM' ? estForm.btnOpcionActivo : estForm.btnOpcionInactivo}>CUSTOM</button></div>
-                    <div className="mt-1">
-                      {opcionSede === 'FIJA' && <div className="relative"><select className={`${estForm.input} ${RADIO_GENERAL} appearance-none cursor-pointer pr-8`} value={sedeFija} onChange={e => setSedeFija(e.target.value)}>{AMIGOS_FALLBACK.map(a => <option key={a} value={`Casa de ${a}`}>Casa de {a}</option>)}</select><div className="absolute inset-y-0 right-3 flex items-center pointer-events-none"><span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>▼</span></div></div>}
-                      {opcionSede === 'VOTACION' && <div className={`pt-2 pb-3 px-3 rounded-2xl border ${isDark ? 'bg-slate-800/30 border-slate-700' : 'bg-slate-50 border-slate-100'}`}><p className={`text-[10px] font-black mb-3 text-center uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Seleccionar casas candidatas:</p><div className="flex flex-wrap justify-center gap-2">{AMIGOS_FALLBACK.map(a => <motion.button key={a} whileTap={{ scale: 0.95 }} onClick={() => setCandidatosSede(p => p.includes(a) ? p.filter(c => c !== a) : [...p, a])} className={`px-3 py-1.5 rounded-full text-[10px] font-black transition-all border-2 ${candidatosSede.includes(a) ? 'bg-violet-600 text-white border-violet-600 shadow-md' : (isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-400 border-slate-200')}`}>{a.toUpperCase()}</motion.button>)}</div></div>}
-                      {opcionSede === 'CUSTOM' && <input type="text" maxLength={20} placeholder="Ej: Vertigo, Consti" className={`${estForm.input} ${RADIO_GENERAL}`} value={sedePersonalizadaInput} onChange={e => setSedePersonalizadaInput(e.target.value)} />}
-                    </div>
-                  </div>
-              )}
-
-              <div><label className={estForm.label}>Notas (Opcional)</label><input type="text" placeholder={tipoJuntada === 'IRL' ? "Ej: Traigan hielo, falta coca" : "Ej: Superclásico de Rocket League"} className={`${estForm.input} ${RADIO_GENERAL}`} value={notas} onChange={e => setNotas(e.target.value)} /></div>
-              <div><label className={estForm.label}>¿Qué onda?</label><div className="flex flex-wrap gap-1.5">{(tipoJuntada === 'IRL' ? TAGS_DISPONIBLES_IRL : TAGS_DISPONIBLES_DISCORD).map(t => <button key={t.label} onClick={() => setTagsSel(p => p.includes(t.label) ? p.filter(x => x !== t.label) : [...p, t.label])} className={`px-3 py-1 text-[8px] font-bold transition-all border-2 ${tagsSel.includes(t.label) ? 'bg-violet-600 text-white border-violet-600' : (isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-100')} ${RADIO_GENERAL}`}>{t.emoji} {t.label}</button>)}</div></div>
-              
-              <div className="pt-2">
-                  <div className={`${estForm.uploadArea} h-40 shrink-0 ${imagenJuntadaPreview ? 'border-transparent shadow-sm' : (isDark ? 'border-dashed border-slate-700 bg-slate-800/50 hover:bg-slate-800' : 'border-dashed border-violet-200 bg-violet-50 hover:bg-violet-100')}`}>
-                    <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) { setImagenJuntada(f); setImagenJuntadaPreview(URL.createObjectURL(f)); } }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                    {imagenJuntadaPreview ? <><img src={imagenJuntadaPreview} className="w-full h-full object-cover" alt="Preview Juntada" /><div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"><span className="text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">🔄 CAMBIAR FOTO</span></div></> : <span className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${isDark ? 'text-slate-400' : 'text-violet-600'}`}>📸 AGREGAR FOTO (OBLIGATORIA)</span>}
-                  </div>
-              </div>
-            </div>
-
-            <div className="shrink-0 pt-4 mt-auto border-t border-slate-100 dark:border-slate-800">
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={publicarJuntada} disabled={isUploading} className={`${estForm.botonPrincipal} ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>{isUploading ? '⏳ GUARDANDO...' : (juntadaEnEdicion ? '💾 GUARDAR CAMBIOS' : '🚀 PROPONER')}</motion.button>
-            </div>
-          </motion.div>
-        </main>
-      )}
-
-      {/* FORMULARIO NUEVA PUBLICACIÓN (POST) */}
-      {usuarioLogueado && mostrandoFormPosteo && !mostrandoFormulario && (
-        <main className="p-4 pb-10 min-h-screen flex flex-col items-center justify-center">
-          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={estForm.contenedor}>
-            <div className="shrink-0">
-              <button onClick={() => { setMostrandoFormPosteo(false); setImagenPost(null); setImagenPostPreview(null); setTextoPost(''); }} className={`text-[10px] mb-4 uppercase tracking-widest transition-colors font-bold ${isDark ? 'text-slate-500 hover:text-violet-400' : 'text-slate-400 hover:text-violet-600'}`}>← Cancelar</button>
-              <h2 className={`text-xl font-black mb-5 tracking-tighter uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>NUEVA PUBLICACIÓN 📸</h2>
+              <button onClick={resetearFormulario} className={`text-[10px] mb-4 uppercase tracking-wider transition-colors font-medium ${isDark ? 'text-slate-500 hover:text-violet-400' : 'text-slate-400 hover:text-violet-600'}`}>← Volver al Catálogo</button>
+              <h2 className={`text-xl font-display font-bold mb-5 tracking-tight uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>{productoEnEdicion ? 'EDITAR LAPTOP ✏️' : 'NUEVA LAPTOP 💻'}</h2>
             </div>
             
-            <div className="flex-1 flex flex-col overflow-y-auto pr-2 pb-4 space-y-5 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-              <div className="flex-1 min-h-[240px] flex flex-col pt-1">
-                  <div className={`${estForm.uploadArea} flex-1 ${imagenPostPreview ? 'border-transparent shadow-sm' : (isDark ? 'border-dashed border-slate-700 bg-slate-800/50 hover:bg-slate-800' : 'border-dashed border-violet-200 bg-violet-50 hover:bg-violet-100')}`}>
-                      <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) { setImagenPost(f); setImagenPostPreview(URL.createObjectURL(f)); } }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                      {imagenPostPreview ? <><img src={imagenPostPreview} className="w-full h-full object-cover" alt="Preview Posteo" /><div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"><span className="text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">🔄 CAMBIAR FOTO</span></div></> : <span className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${isDark ? 'text-slate-400' : 'text-violet-600'}`}>📸 AGREGAR FOTO (OBLIGATORIA)</span>}
+            <div className="flex-1 overflow-y-auto pr-2 pb-4 space-y-5 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+              <div className="pt-1">
+                <div className={`${estForm.uploadArea} py-6 ${imagenesArchivos.length >= 5 ? 'opacity-50' : 'cursor-pointer'} ${isDark ? 'border-dashed border-slate-700 bg-slate-800/50 hover:bg-slate-800' : 'border-dashed border-violet-200 bg-violet-50 hover:bg-violet-100'}`}>
+                  <input type="file" multiple accept="image/*" onChange={manejarSubidaImagen} disabled={imagenesArchivos.length >= 5} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                  <span className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-2 mb-1 ${isDark ? 'text-slate-400' : 'text-violet-600'}`}>📸 SUBIR FOTOS</span>
+                  <span className={`text-[9px] font-medium ${isDark ? 'text-slate-500' : 'text-violet-400'}`}>Máximo 5 imágenes permitidas ({imagenesArchivos.length}/5)</span>
+                </div>
+                {imagenesArchivos.length > 0 && (
+                  <div className="grid grid-cols-5 gap-2 mt-3">
+                    {imagenesArchivos.map((imgObj, index) => (
+                      <div key={`${imgObj.url}-${index}`} draggable onDragStart={() => setDraggedIndex(index)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (draggedIndex === null || draggedIndex === index) return; const nuevas = [...imagenesArchivos]; nuevas.splice(index, 0, nuevas.splice(draggedIndex, 1)[0]); setImagenesArchivos(nuevas); setDraggedIndex(null); }} onDragEnd={() => setDraggedIndex(null)} className={`relative aspect-square rounded-lg overflow-hidden border cursor-move transition-all ${isDark ? 'border-slate-700' : 'border-slate-200'} group ${draggedIndex === index ? 'opacity-40 scale-90 border-violet-500 border-2' : 'opacity-100'}`}>
+                        <img src={imgObj.url} alt={`Preview ${index}`} className="w-full h-full object-cover pointer-events-none" />
+                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); eliminarImagenPreview(index); }} className="w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md hover:scale-110 transition-transform">✕</button>
+                        </div>
+                        {index === 0 && <span className="absolute bottom-0 inset-x-0 bg-violet-600/90 text-white text-[7px] text-center font-bold uppercase py-0.5 pointer-events-none z-10">Principal</span>}
+                      </div>
+                    ))}
                   </div>
+                )}
               </div>
 
-              <div className="shrink-0">
-                <label className={estForm.label}>Pie de foto (Opcional)</label>
-                <textarea 
-                  placeholder="Escribí algo piola..." 
-                  rows={3} 
-                  className={`${estForm.input} ${RADIO_GENERAL} h-auto py-3 resize-none font-medium text-xs leading-relaxed`} 
-                  value={textoPost} 
-                  onChange={e => setTextoPost(e.target.value)} 
-                />
+              <div><label className={estForm.label}>Especificaciones (Separadas por |)</label><input type="text" placeholder='Ej: Lenovo Thinkpad E14 | i7 10° Gen | 8 GB | 256 GB | 14"' className={`${estForm.input} h-10 ${RADIO_GENERAL}`} value={textoSpecs} onChange={e => setTextoSpecs(e.target.value)} /></div>
+              <div><label className={estForm.label}>Descripción</label><textarea placeholder="Detalles, accesorios o características extra de la notebook..." className={`${estForm.input} py-3 h-24 resize-none leading-relaxed ${RADIO_GENERAL}`} value={descripcionInput} onChange={e => setDescripcionInput(e.target.value)} /></div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={estForm.label}>Precio Normal (Gs.)</label><input type="text" inputMode="numeric" placeholder="3,000,000" className={`${estForm.input} h-10 ${RADIO_GENERAL}`} value={precioInput ? Number(precioInput).toLocaleString('en-US') : ''} onChange={e => setPrecioInput(e.target.value.replace(/\D/g, ''))} /></div>
+                <div><label className={estForm.label}>Condición</label><div className="relative"><select className={`${estForm.input} h-10 ${RADIO_GENERAL} appearance-none pr-8 cursor-pointer`} value={condicionInput} onChange={e => setCondicionInput(e.target.value)}>{['Excelente Estado', 'Muy Buen Estado', 'Con detalles estéticos'].map(o => <option key={o} value={o}>{o}</option>)}</select><span className={`absolute right-3 top-3 text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'} pointer-events-none`}>▼</span></div></div>
               </div>
 
-              <div className={`shrink-0 flex items-center gap-3 p-3 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                <input type="checkbox" id="anonimo-check" checked={esAnonimo} onChange={e => setEsAnonimo(e.target.checked)} className="w-4 h-4 text-violet-600 bg-slate-100 border-slate-300 rounded focus:ring-violet-500 focus:ring-2 cursor-pointer" />
-                <label htmlFor="anonimo-check" className={`text-[10px] font-black uppercase tracking-widest cursor-pointer ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Publicar como Anónimo</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={estForm.label}>Precio Oferta (Gs.)</label><input type="text" inputMode="numeric" placeholder="2,600,000" className={`${estForm.input} h-10 ${RADIO_GENERAL}`} value={precioOfertaInput ? Number(precioOfertaInput).toLocaleString('en-US') : ''} onChange={e => setPrecioOfertaInput(e.target.value.replace(/\D/g, ''))} /></div>
+                <div><label className={estForm.label}>% Descuento</label><input type="number" placeholder="13" className={`${estForm.input} h-10 ${RADIO_GENERAL} ${precioOfertaInput ? 'text-red-500 font-semibold' : ''}`} value={descuentoInput} onChange={e => { setDescuentoInput(e.target.value); if (precioInput && e.target.value && !isNaN(Number(e.target.value))) setPrecioOfertaInput(Math.round(Number(precioInput) * (1 - Number(e.target.value) / 100)).toString()); }} /></div>
+              </div>
+
+              <div>
+                <label className={estForm.label}>Características Extras</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {TAGS_DISPONIBLES.map(t => <button key={t.label} onClick={() => setTagsSel(p => p.includes(t.label) ? p.filter(x => x !== t.label) : [...p, t.label])} className={`px-3 py-1 text-[10px] font-medium transition-all border-2 ${tagsSel.includes(t.label) ? 'bg-violet-600 text-white border-violet-600' : (isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-100')} ${RADIO_GENERAL}`}>{t.emoji} {t.label}</button>)}
+                </div>
               </div>
             </div>
-
             <div className="shrink-0 pt-4 mt-auto border-t border-slate-100 dark:border-slate-800">
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={publicarPosteo} disabled={isUploading} className={`${estForm.botonPrincipal} ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                {isUploading ? '⏳ SUBIENDO...' : '🚀 PUBLICAR'}
+              <motion.button 
+                whileHover={{ scale: estaPublicando ? 1 : 1.02 }} 
+                whileTap={{ scale: estaPublicando ? 1 : 0.98 }} 
+                onClick={publicarProducto} 
+                disabled={estaPublicando}
+                className={estForm.botonPrincipal}
+              >
+                {estaPublicando ? '⏳ CARGANDO FOTOS Y GUARDANDO...' : (productoEnEdicion ? '💾 GUARDAR CAMBIOS' : '🚀 PUBLICAR NOTEBOOK')}
               </motion.button>
             </div>
           </motion.div>
         </main>
-      )}
+      ) : (
+        <main className="max-w-7xl mx-auto p-2 sm:p-4 flex flex-col gap-6 sm:gap-8 animate-in fade-in duration-300 w-full overflow-hidden flex-1">
+          <CarruselBanners banners={banners} onEdit={() => setMostrandoGestorPromos(true)} isDark={isDark} isAdmin={isAdmin} />
 
-      {/* CONTENIDO PRINCIPAL (TARJETAS Y DISCORD) */}
-      {usuarioLogueado && !mostrandoFormulario && !mostrandoFormPosteo && (
-        <main className="pb-16 min-h-screen">
-          <nav className="p-4 lg:p-6 flex justify-between items-center max-w-7xl mx-auto relative z-50">
-            <img src="https://i.imgur.com/5hJH1kn.png" alt="Logo" className={`h-8 lg:h-10 w-auto object-contain transition-all ${isDark ? 'invert opacity-90' : ''}`} />
-            <div className="flex items-center gap-3">
-                <button onClick={toggleTema} className={`flex items-center justify-center w-8 h-8 rounded-full border transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-yellow-400 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-400 hover:text-violet-500 hover:border-violet-300 shadow-sm'}`} title={isDark ? "Activar modo claro" : "Activar modo oscuro"}>{isDark ? <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> : <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}</button>
+          <div className="flex flex-col gap-4 sm:gap-6">
+            <div className="flex flex-row justify-between items-center gap-4 px-2 sm:px-0">
+              <h2 className={`text-2xl sm:text-3xl lg:text-4xl font-display font-bold tracking-tight ${isDark ? 'text-white' : 'text-[#1E2046]'}`}>Laptops</h2>
+              <div className="flex items-center gap-3 justify-end sm:ml-auto">
+                <span className={`text-[10px] font-medium uppercase tracking-wider mr-2 ${isDark ? 'text-slate-500' : 'text-slate-400'} hidden sm:block`}>{productosOrdenados.length} productos</span>
                 <div className="relative">
-                    <button onClick={() => { setMenuPerfilAbierto(!menuPerfilAbierto); setPasswordVieja(''); setNuevaPassword(''); setFotoPreview(null); setFotoFile(null); }} className={`flex items-center gap-2 px-2 py-1.5 rounded-full border transition-colors shadow-sm ${isDark ? 'bg-slate-900 border-slate-700 hover:border-violet-500' : 'bg-white border-slate-200 hover:border-violet-300'}`}><img src={getFotoUsuario(usuarioLogueado)} className={`w-6 h-6 rounded-full object-cover border ${isDark ? 'border-slate-800 bg-slate-800' : 'border-slate-100 bg-slate-50'}`} alt="Avatar" /><span className={`text-[10px] font-black pr-1 ${isDark ? 'text-white' : 'text-slate-800'}`}>{usuarioLogueado} ▼</span></button>
-                    <AnimatePresence>
-                        {menuPerfilAbierto && (
-                            <motion.div initial={{ opacity: 0, y: -10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.95 }} transition={{ duration: 0.15 }} className={`absolute right-0 top-12 w-[260px] border shadow-xl rounded-2xl p-5 flex flex-col gap-4 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                                <p className={`text-[10px] font-black uppercase tracking-widest text-center border-b pb-3 ${isDark ? 'text-slate-400 border-slate-800' : 'text-slate-400 border-slate-100'}`}>Tu Perfil</p>
-                                <div className="flex flex-col items-center justify-center">
-                                  <label htmlFor="perfil-upload" className="relative cursor-pointer group"><img src={fotoPreview || getFotoUsuario(usuarioLogueado)} className={`w-16 h-16 rounded-full object-cover border-2 transition-colors shadow-sm ${isDark ? 'border-slate-700 group-hover:border-violet-500' : 'border-slate-200 group-hover:border-violet-400'}`} alt="Tu perfil" /><div className="absolute inset-0 bg-slate-900/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all"><span className="text-white text-xl">📷</span></div></label>
-                                  <input id="perfil-upload" type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if(f) { setFotoFile(f); setFotoPreview(URL.createObjectURL(f)); } }} />
-                                  <p className={`text-[9px] font-bold mt-2 uppercase tracking-widest text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Tocar para subir</p>
-                                </div>
-                                <div className="flex flex-col gap-1.5"><label className={`text-[10px] font-bold ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>O Usar Link (Ej: Imgur)</label><input type="text" placeholder="https://..." value={nuevaFotoUrl} onChange={e => setNuevaFotoUrl(e.target.value)} className={`w-full h-8 px-3 rounded-lg text-[10px] font-bold outline-none focus:ring-1 border ${isDark ? 'bg-slate-800 border-slate-700 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-violet-300 placeholder:text-slate-400'}`} /></div>
-                                <div className={`flex flex-col gap-1.5 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}><label className={`text-[10px] font-bold ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Cambiar Contraseña (Opcional)</label><input type="password" placeholder="Nueva contraseña..." value={nuevaPassword} onChange={e => setNuevaPassword(e.target.value)} className={`w-full h-8 px-3 rounded-lg text-[10px] font-bold outline-none focus:ring-1 border ${isDark ? 'bg-slate-800 border-slate-700 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-800 focus:ring-violet-300 placeholder:text-slate-400'}`} /></div>
-                                <div className={`flex flex-col gap-1.5 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}><label className={`text-[10px] font-black ml-1 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>🔒 Contraseña Actual (Opcional)</label><input type="password" placeholder="Solo requerida si cambiás tu clave" value={passwordVieja} onChange={e => setPasswordVieja(e.target.value)} className={`w-full h-8 px-3 rounded-lg text-[10px] font-bold outline-none focus:ring-1 border ${isDark ? 'bg-violet-900/30 border-violet-800 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-violet-50 border-violet-200 text-slate-800 focus:ring-violet-400 placeholder:text-slate-400'}`} /></div>
-                                <div className="flex flex-col gap-2 mt-2">
-                                  <button onClick={guardarPerfil} disabled={isUploading} className={`w-full h-9 bg-violet-600 text-white rounded-xl text-[10px] font-black uppercase shadow-sm ${isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-violet-700 active:scale-95 transition-all'}`}>{isUploading ? '⏳ GUARDANDO...' : 'GUARDAR CAMBIOS'}</button>
-                                  <button onClick={() => { setUsuarioLogueado(null); localStorage.removeItem('juntadas_user'); }} className={`w-full h-8 rounded-xl text-[10px] font-black uppercase border transition-colors ${isDark ? 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20' : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'}`}>Cerrar Sesión</button>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                  <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setMenuFiltroAbierto(!menuFiltroAbierto)} className={`w-10 h-10 rounded-full bg-violet-600 text-white flex items-center justify-center shadow-md shadow-violet-200 transition-all ${isDark ? 'shadow-none' : ''}`} title="Ordenar catálogo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="6" y1="12" x2="18" y2="12"></line><line x1="8" y1="18" x2="16" y2="18"></line></svg></motion.button>
+                  <AnimatePresence>
+                    {menuFiltroAbierto && (
+                      <motion.div initial={{ opacity: 0, y: -10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.95 }} transition={{ duration: 0.15 }} className={`absolute right-0 top-12 w-48 border shadow-xl rounded-2xl p-2 flex flex-col z-50 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <p className={`text-[8px] font-semibold uppercase tracking-wider text-center border-b pb-2 mb-2 ${isDark ? 'text-slate-500 border-slate-800' : 'text-slate-400 border-slate-100'}`}>Ordenar por</p>
+                        {[{id: 'NUEVOS', label: 'Nuevos ingresos'}, {id: 'PRECIO_MENOR', label: 'Precio (Menor a Mayor)'}, {id: 'PRECIO_MAYOR', label: 'Precio (Mayor a Menor)'}].map(op => (
+                          <button key={op.id} onClick={() => { setOrdenamiento(op.id as any); setMenuFiltroAbierto(false); }} className={`text-left px-3 py-2 text-[10px] font-medium uppercase tracking-wider rounded-xl transition-colors flex items-center justify-between ${op.id !== 'NUEVOS' ? 'mt-1 ' : ''}${ordenamiento === op.id ? (isDark ? 'bg-violet-900/40 text-violet-400' : 'bg-violet-50 text-violet-600') : (isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-50')}`}>{op.label} {ordenamiento === op.id && '✓'}</button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-            </div>
-          </nav>
-
-          <div className="max-w-7xl mx-auto p-4 flex flex-col lg:flex-row gap-6 lg:gap-10 items-start">
-            <div className="w-full lg:flex-1 order-2 lg:order-1 flex flex-col gap-6">
-              <div className={`flex gap-2 p-1.5 rounded-2xl mx-auto w-full max-w-sm border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'}`}>
-                <button onClick={() => setVistaPrincipal('PROPUESTAS')} className={`flex-1 h-10 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest ${vistaPrincipal === 'PROPUESTAS' ? (isDark ? 'bg-slate-800 text-violet-400 border-slate-700 border shadow-sm' : 'bg-violet-50 text-violet-600 shadow-sm border border-violet-100') : (isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}>🗓️ Propuestas</button>
-                <button onClick={() => setVistaPrincipal('POSTEOS')} className={`flex-1 h-10 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest ${vistaPrincipal === 'POSTEOS' ? (isDark ? 'bg-slate-800 text-pink-400 border-slate-700 border shadow-sm' : 'bg-pink-50 text-pink-600 shadow-sm border border-pink-100') : (isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}>📸 Publicaciones</button>
+                
+                {isAdmin && (
+                  <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { resetearFormulario(); setMostrandoFormulario(true); }} className={ESTETICA_CONTROLES(isDark).botonPrincipal}>+ PUBLICAR</motion.button>
+                )}
               </div>
+            </div>
+          </div>
 
-              {vistaPrincipal === 'PROPUESTAS' && (
-                <div className="flex-1 space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex justify-between items-center mb-4 px-1">
-                    <h2 className={`text-2xl font-black tracking-tighter uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>PROPUESTAS</h2>
+          {estaCargandoDB ? (
+            <div className="w-full py-20" />
+          ) : productosOrdenados.length === 0 ? (
+             <div className="w-full flex flex-col items-center justify-center py-20 opacity-50 text-center"><span className="text-4xl mb-4">🛒</span><p className="font-bold">No hay notebooks publicadas.</p></div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6 mt-2 w-full px-2 sm:px-0">
+              <AnimatePresence>
+                {productosOrdenados.map((producto) => (
+                  <motion.div key={producto.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }} onClick={() => { setProductoSeleccionado(producto); setIdxImagenModal(0); }} className={`${ESTETICA_TARJETA(isDark).contenedor} group`}>
                     
-                    <div className="flex items-center gap-2">
-                      {/* NUEVO: Botón Filtro Circular y Menú */}
-                      <div className="relative">
-                        <motion.button 
-                          whileHover={{ scale: 1.05 }} 
-                          whileTap={{ scale: 0.95 }} 
-                          onClick={() => setMenuFiltroAbierto(!menuFiltroAbierto)} 
-                          className={`w-8 h-8 rounded-full bg-violet-600 text-white flex items-center justify-center shadow-md shadow-violet-200 transition-all ${isDark ? 'shadow-none' : ''}`}
-                          title="Filtrar propuestas"
-                        >
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="4" y1="6" x2="20" y2="6"></line>
-                            <line x1="6" y1="12" x2="18" y2="12"></line>
-                            <line x1="8" y1="18" x2="16" y2="18"></line>
-                          </svg>
-                        </motion.button>
-
-                        <AnimatePresence>
-                          {menuFiltroAbierto && (
-                            <motion.div 
-                              initial={{ opacity: 0, y: -10, scale: 0.95 }} 
-                              animate={{ opacity: 1, y: 0, scale: 1 }} 
-                              exit={{ opacity: 0, y: -10, scale: 0.95 }} 
-                              transition={{ duration: 0.15 }} 
-                              className={`absolute right-1/2 translate-x-1/2 top-10 w-48 border shadow-xl rounded-2xl p-2 flex flex-col z-50 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
-                            >
-                              <p className={`text-[8px] font-black uppercase tracking-widest text-center border-b pb-2 mb-2 ${isDark ? 'text-slate-500 border-slate-800' : 'text-slate-400 border-slate-100'}`}>Ordenar por</p>
-                              <button onClick={() => { cambiarOrden('RECIENTES'); setMenuFiltroAbierto(false); }} className={`text-left px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors flex items-center justify-between ${ordenJuntadas === 'RECIENTES' ? (isDark ? 'bg-violet-900/40 text-violet-400' : 'bg-violet-50 text-violet-600') : (isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-50')}`}>
-                                Recién agregado {ordenJuntadas === 'RECIENTES' && '✓'}
-                              </button>
-                              <button onClick={() => { cambiarOrden('PROXIMAS'); setMenuFiltroAbierto(false); }} className={`text-left px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors flex items-center justify-between mt-1 ${ordenJuntadas === 'PROXIMAS' ? (isDark ? 'bg-violet-900/40 text-violet-400' : 'bg-violet-50 text-violet-600') : (isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-50')}`}>
-                                Próximos eventos {ordenJuntadas === 'PROXIMAS' && '✓'}
-                              </button>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+                    {isAdmin && (
+                      <div className="absolute top-1 right-1 sm:top-2.5 sm:right-2.5 z-40 flex flex-col gap-1 sm:gap-1.5 items-center justify-center">
+                        <motion.button whileHover={{ scale: 1.1 }} onClick={(e) => { e.stopPropagation(); eliminarProducto(producto.id); }} className="flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full transition-colors font-medium cursor-pointer text-[10px] sm:text-xs text-white/70 hover:bg-white/20 bg-black/40 backdrop-blur-md hover:text-red-400" title="Eliminar publicación">✕</motion.button>
+                        <motion.button whileHover={{ scale: 1.1 }} onClick={(e) => { e.stopPropagation(); abrirEdicion(producto); }} className="flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full transition-colors font-medium cursor-pointer text-[10px] sm:text-xs text-white/70 hover:bg-white/20 bg-black/40 backdrop-blur-md hover:text-violet-400" title="Editar publicación"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" className="sm:w-[11px] sm:h-[11px]"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></motion.button>
                       </div>
+                    )}
 
-                      <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { resetForm(); setMostrandoFormulario(true); }} className={`bg-violet-600 text-white font-black shadow-md shadow-violet-200 hover:bg-violet-700 transition-all uppercase tracking-widest flex items-center justify-center text-[10px] px-4 h-8 ${RADIO_GENERAL} ${isDark ? 'shadow-none' : ''}`}>+ PROPONER</motion.button>
-                    </div>
-                  </div>
-                  
-                  {juntadasOrdenadas.length === 0 ? (
-                    <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={`border-2 border-dashed ${RADIO_GENERAL} py-12 flex flex-col items-center justify-center text-center mt-2 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300/60'}`}><div className="text-3xl mb-3 opacity-30">🗓️</div><p className={`text-[10px] font-bold mb-5 uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Nada por acá...</p><motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { resetForm(); setMostrandoFormulario(true); }} className={`bg-violet-600 text-white font-black shadow-md shadow-violet-200 hover:bg-violet-700 transition-all uppercase tracking-widest flex items-center justify-center text-xs px-6 h-10 ${RADIO_GENERAL} ${isDark ? 'shadow-none' : ''}`}>+ PROPONER</motion.button></motion.div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-                      {juntadasOrdenadas.map((j) => {
-                        const [voyYo, dudaYo, pasoYo, cantConfirmados, esCreador, esAdminTomas, esDiscord, esIRL] = [(j.confirmados ?? []).includes(usuarioLogueado), (j.dudosos ?? []).includes(usuarioLogueado), (j.rechazados ?? []).includes(usuarioLogueado), j.confirmados?.length ?? 0, usuarioLogueado === j.creador, usuarioLogueado === 'Tomas', j.tipo === 'DISCORD', j.tipo === 'IRL' || !j.tipo];
-                        const puedeEliminarOEditar = esCreador || esAdminTomas, iconoSede = j.esSedePersonalizada ? '📍' : '🏠', estadoT = calcularEstadoTiempo(j.timestamp);
-                        const totalVotosSede = j.candidatos?.reduce((a: number, c: any) => a + (c.votantes?.length ?? 0), 0) ?? 0, votosRestantes = Math.max(0, AMIGOS_FALLBACK.length - (j.rechazados?.length ?? 0) - totalVotosSede);
-                        let sedeConfirmada = (j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : null, esIrremontable = false;
-                        
-                        if (!j.esSedeFija && !j.esSedePersonalizada && j.candidatos?.length) {
-                          const o = [...j.candidatos].sort((a, b) => (b.votantes?.length ?? 0) - (a.votantes?.length ?? 0));
-                          if ((o[0]?.votantes?.length ?? 0) > ((o[1]?.votantes?.length ?? 0) + votosRestantes)) { sedeConfirmada = o[0].nombre; esIrremontable = true; }
-                        }
-
-                        return (
-                          <motion.div key={j.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={`relative ${ESTETICA_TARJETA(isDark).contenedor} ${estadoT.texto.includes('EXPIRADO') ? (isDark ? 'opacity-50' : 'opacity-60 grayscale-[30%]') : ''} ${j.pineado && !estadoT.texto.includes('EXPIRADO') ? (isDark ? 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-slate-950 border-transparent' : 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-100 border-transparent') : ''}`}>
-                            <div className="absolute top-2 right-2 z-30 flex flex-col gap-1.5 items-center justify-center">
-                              {puedeEliminarOEditar && <><motion.button whileHover={{ scale: 1.1 }} onClick={() => eliminarRegistro(j.id)} className={`flex items-center justify-center w-6 h-6 rounded-full transition-colors font-bold cursor-pointer text-xs ${j.imagenUrl ? 'text-white/70 hover:bg-white/20 bg-black/20 hover:text-red-400' : (isDark ? 'text-slate-400 bg-slate-800 hover:bg-red-900/30 hover:text-red-400' : 'text-slate-400 hover:bg-red-50 bg-slate-100 hover:text-red-500')}`} title="Eliminar juntada">✕</motion.button><motion.button whileHover={{ scale: 1.1 }} onClick={() => abrirEdicion(j)} className={`flex items-center justify-center w-6 h-6 rounded-full transition-colors cursor-pointer ${j.imagenUrl ? 'text-white/70 hover:text-white hover:bg-white/20 bg-black/20' : (isDark ? 'text-slate-400 bg-slate-800 hover:bg-violet-900/30 hover:text-violet-400' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50 bg-slate-100')}`} title="Editar juntada"><svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></motion.button></>}
-                              {(esAdminTomas || j.pineado) && <motion.button whileHover={esAdminTomas ? { scale: 1.1 } : {}} onClick={() => esAdminTomas ? supabase.from('juntadas').update({ pineado: !j.pineado }).eq('id', j.id).then(()=>setJuntadas(p=>p.map(x=>x.id===j.id?{...x,pineado:!j.pineado}:x))) : null} className={`flex items-center justify-center w-6 h-6 rounded-full transition-colors text-xs ${esAdminTomas ? 'cursor-pointer' : 'cursor-default'} ${j.pineado ? (j.imagenUrl ? 'text-yellow-400 bg-black/40' : (isDark ? 'text-yellow-500 bg-yellow-900/30' : 'text-yellow-600 bg-yellow-100')) : (j.imagenUrl ? 'text-white/70 hover:text-white hover:bg-white/20 bg-black/20' : (isDark ? 'text-slate-400 bg-slate-800 hover:bg-slate-700 hover:text-yellow-500' : 'text-slate-400 hover:text-yellow-600 hover:bg-yellow-50 bg-slate-100'))}`} title={j.pineado ? "Evento destacado" : "Destacar evento"}><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" /></svg></motion.button>}
-                            </div>
-
-                            <div className="absolute top-2 left-2 z-20 flex flex-row gap-1.5 items-center">
-                              <span className={`${j.imagenUrl ? 'bg-black/40 backdrop-blur-md text-white border-white/10' : (esDiscord ? (isDark ? 'bg-[#5865F2]/20 text-[#5865F2] border-[#5865F2]/30' : 'bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20') : (isDark ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50' : 'bg-emerald-50 text-emerald-600 border-emerald-200'))} text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm border gap-1.5 h-[22px]`}>{esDiscord ? <><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 127.14 96.36" fill="currentColor" className="w-3.5 h-3.5 text-white drop-shadow-sm"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14h0C127.86,52.43,121.56,29.1,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.31,60,73.31,53s5-12.74,11.43-12.74S96.3,46,96.19,53,91.08,65.69,84.69,65.69Z"/></svg> DISCORD</> : '📍 IRL'}</span>
-                              <span className={`${j.imagenUrl ? 'bg-black/40 backdrop-blur-md text-white border-white/10' : (isDark ? 'bg-violet-900/30 text-violet-300 border-violet-800/50' : 'bg-violet-50 text-violet-600 border-violet-200')} text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm border gap-1.5 h-[22px]`}><img src={getFotoUsuario(j.creador)} className="w-3.5 h-3.5 rounded-full object-cover" alt="creador" />{j.creador}</span>
-                            </div>
-
-                            {j.imagenUrl ? (
-                              <div className="relative -mx-5 -mt-5 mb-5 p-5 rounded-t-2xl overflow-hidden min-h-[195px] flex flex-col justify-end group">
-                                <div className="absolute inset-0 bg-cover bg-center z-0 transition-transform duration-700 ease-out group-hover:scale-105" style={{ backgroundImage: `url(${j.imagenUrl})` }} />
-                                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-transparent z-10" />
-                                <div className="absolute bottom-4 left-5 right-16 z-20 flex flex-col gap-2 pt-16">
-                                  <h3 className="text-2xl font-black text-white leading-none tracking-tight drop-shadow-lg pr-8">{j.titulo}</h3>
-                                  
-                                  {/* GRID PARA ALINEAR EMOJIS Y BURBUJAS (CON IMAGEN) */}
-                                  <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2 items-center">
-                                    <span className="text-sm text-center w-4 drop-shadow-md">📅</span>
-                                    <div className="flex items-center flex-wrap gap-2 text-slate-100 drop-shadow-md">
-                                      <div className="flex items-center gap-2 flex-nowrap">
-                                        <p className="text-[11px] font-bold whitespace-nowrap">{j.fechaDisplay} — <span className="text-white">{j.horaDisplay}</span></p>
-                                        <span className={`${estadoT.color} bg-opacity-90 text-white text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm shrink-0`}>{estadoT.texto}</span>
-                                      </div>
-                                    </div>
-                                    
-                                    {esIRL && (
-                                      <>
-                                        <span className="text-sm text-center w-4 drop-shadow-md">{iconoSede}</span>
-                                        <div className="flex items-center drop-shadow-md">
-                                          {(j.esSedeFija || j.esSedePersonalizada || esIrremontable) ? (
-                                            <span className="bg-white/20 backdrop-blur-md text-white border border-white/60 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
-                                              {(j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : `${sedeConfirmada} VOTADA COMO SEDE`}
-                                            </span>
-                                          ) : (
-                                            <span className="bg-yellow-400/25 backdrop-blur-md text-yellow-200 border border-yellow-400/70 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
-                                              SEDE EN VOTACIÓN
-                                            </span>
-                                          )}
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => compartirWhatsApp(j)} className="absolute bottom-2 right-2 z-30 w-6 h-6 bg-[#25D366] text-white rounded-full overflow-hidden shadow-lg shadow-black/20 hover:bg-[#1fb855] transition-colors" title="Avisar por WhatsApp">
-                                  <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.305-.88-.653-1.473-1.46-1.646-1.757-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51h-.57c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                                </motion.button>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="mb-2.5 mt-12 pr-10 relative">
-                                  <h3 className={`text-2xl font-black leading-none tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{j.titulo}</h3>
-                                </div>
-                                
-                                {/* GRID PARA ALINEAR EMOJIS Y BURBUJAS (SIN IMAGEN) */}
-                                <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2 items-center mb-4">
-                                  <span className="text-xs text-center w-4">📅</span>
-                                  <div className={`flex items-center flex-wrap gap-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                    <div className="flex items-center gap-2 flex-nowrap">
-                                      <p className="text-[11px] font-bold whitespace-nowrap">{j.fechaDisplay} — <span className={isDark ? 'text-white' : 'text-slate-950'}>{j.horaDisplay}</span></p>
-                                      <span className={`${estadoT.color} text-white text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm shrink-0`}>{estadoT.texto}</span>
-                                    </div>
-                                    {!esIRL && <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => compartirWhatsApp(j)} className="shrink-0 w-6 h-6 bg-[#25D366] text-white rounded-full relative overflow-hidden shadow-md hover:bg-[#1fb855] transition-colors" title="Avisar por WhatsApp">
-                                    <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.305-.88-.653-1.473-1.46-1.646-1.757-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51h-.57c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                                  </motion.button>}
-                                  </div>
-                                  
-                                  {esIRL && (
-                                    <>
-                                      <span className={`text-xs text-center w-4 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{iconoSede}</span>
-                                      <div className="flex items-center justify-between gap-2">
-                                        {(j.esSedeFija || j.esSedePersonalizada || esIrremontable) ? (
-                                          <span className="bg-white/60 backdrop-blur-sm text-slate-900 border border-white/90 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
-                                            {(j.esSedeFija || j.esSedePersonalizada) ? j.sedeFinal : `${sedeConfirmada} VOTADA COMO SEDE`}
-                                          </span>
-                                        ) : (
-                                          <span className="bg-yellow-400/20 backdrop-blur-sm text-yellow-800 border border-yellow-400 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm">
-                                            SEDE EN VOTACIÓN
-                                          </span>
-                                        )}
-                                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => compartirWhatsApp(j)} className="shrink-0 w-6 h-6 bg-[#25D366] text-white rounded-full relative overflow-hidden shadow-md hover:bg-[#1fb855] transition-colors" title="Avisar por WhatsApp">
-                                    <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.305-.88-.653-1.473-1.46-1.646-1.757-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51h-.57c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                                  </motion.button>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              </>
-                            )}
-
-                            {esIRL && (!j.esSedeFija && !j.esSedePersonalizada && !esIrremontable) && (
-                              <div className="space-y-2 mb-4 mt-1">
-                                <div className={`p-2.5 border ${RADIO_GENERAL} ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200/80'}`}>
-                                  <p className={`text-[8px] font-black uppercase tracking-widest mb-2 flex justify-between ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><span>🗳️ Votación de sede</span><span className="normal-case tracking-normal">Quedan {votosRestantes} votos</span></p>
-                                  <div className="space-y-1.5">
-                                    {j.candidatos?.map((c: any) => {
-                                      const vCount = c.votantes?.length ?? 0, yoVoteAca = (c.votantes ?? []).includes(usuarioLogueado);
-                                      return (
-                                        <button key={c.nombre} onClick={() => votarSede(j.id, c.nombre)} className={`relative overflow-hidden w-full flex justify-between items-center px-3 py-1.5 ${RADIO_GENERAL} border transition-all group/btn ${yoVoteAca ? (isDark ? 'border-violet-500 ring-1 ring-violet-900 bg-slate-900' : 'border-violet-400 ring-1 ring-violet-200 bg-violet-50/50') : (isDark ? 'border-slate-700 hover:border-violet-600 bg-slate-900' : 'border-slate-200 hover:border-violet-300 bg-white')}`}>
-                                          <motion.div className={`absolute left-0 top-0 bottom-0 ${yoVoteAca ? (isDark ? 'bg-violet-900/30' : 'bg-violet-100') : (isDark ? 'bg-slate-800' : 'bg-slate-100/50')}`} initial={{ width: 0 }} animate={{ width: `${totalVotosSede ? Math.round((vCount / totalVotosSede) * 100) : 0}%` }} transition={{ duration: 0.3, ease: "easeOut" }} />
-                                          <div className="relative z-10 flex justify-between items-center w-full"><span className={`text-[10px] font-bold ${yoVoteAca ? (isDark ? 'text-violet-400' : 'text-violet-700') : (isDark ? 'text-slate-300' : 'text-slate-700')}`}>{c.nombre}</span><div className="flex items-center gap-2"><div className="flex -space-x-1.5 mr-1">{c.votantes?.slice(0,3).map((v: string) => <img key={v} src={getFotoUsuario(v)} className={`w-3.5 h-3.5 rounded-full border object-cover ${isDark ? 'border-slate-800' : 'border-white'}`} alt="votante" />)}</div><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${vCount > 0 ? (isDark ? 'text-violet-300 bg-violet-900/40' : 'text-violet-600 bg-violet-50') : (isDark ? 'text-slate-500 bg-slate-800/50' : 'text-slate-400 bg-slate-50')}`}>{vCount}</span></div></div>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {j.notas && <div className={`mb-3 p-2.5 border ${RADIO_GENERAL} ${isDark ? 'bg-violet-900/20 border-violet-800/50' : 'bg-violet-50/50 border-violet-100'}`}><p className={`text-[10px] font-black uppercase tracking-widest mb-0.5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>📌 NOTAS:</p><p className={`text-[12px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{j.notas}</p></div>}
-                            {j.tags?.length > 0 && <div className="flex flex-wrap gap-1.5 mb-4">{j.tags.map((t: string) => <span key={t} className={`text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm border gap-1.5 ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-200'}`}>{TODOS_LOS_TAGS.find(d => d.label === t)?.emoji} {t}</span>)}</div>}
-
-                            <div className={`p-2.5 ${RADIO_GENERAL} border mb-3 ${isDark ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50/50 border-slate-200/80'}`}>
-                              <div className={`flex justify-between items-center border-b pb-1.5 mb-1.5 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}><p className={`text-[10px] font-black uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Asistencia:</p><div className="flex gap-0.5">{Array.from({ length: AMIGOS_FALLBACK.length }).map((_, i) => <span key={i} className={`text-xs transition-all duration-300 ${i < cantConfirmados ? (isDark ? 'text-violet-500 opacity-100' : 'text-violet-500 opacity-100') : (isDark ? 'text-slate-600 opacity-30 grayscale' : 'text-slate-300 opacity-30 grayscale')}`}>👤</span>)}</div></div>
-                              {(!j.confirmados?.length && !j.dudosos?.length && !j.rechazados?.length) && <p className={`text-[9px] italic ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Nadie respondió todavía</p>}
-                              {j.confirmados?.length > 0 && <p className={`text-[11px] font-medium mb-0.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>✅ <span className={`font-bold ${isDark ? 'text-green-500' : 'text-green-600'}`}>VAN:</span> {j.confirmados.join(', ')}</p>}
-                              {j.dudosos?.length > 0 && <p className={`text-[11px] font-medium mb-0.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>🤔 <span className={`font-bold ${isDark ? 'text-yellow-500' : 'text-yellow-600'}`}>DUDAN:</span> {j.dudosos.join(', ')}</p>}
-                              {j.rechazados?.length > 0 && <p className={`text-[11px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>❌ <span className={`font-bold text-red-500`}>PASAN:</span> {j.rechazados.join(', ')}</p>}
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-2 mb-2 relative">
-                              <button onClick={() => toggleAsistencia(j.id, 'voy')} className={`h-9 text-[9px] font-black uppercase tracking-widest flex items-center justify-center transition-all duration-200 ${RADIO_GENERAL} border ${voyYo ? (isDark ? 'bg-green-500 text-white border-green-500 shadow-none' : 'bg-green-500 text-white border-green-500 shadow-md shadow-green-200') : (isDark ? 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 shadow-sm')}`}>VOY</button>
-                              <button onClick={() => toggleAsistencia(j.id, 'nose')} className={`h-9 text-[9px] font-black uppercase tracking-widest flex items-center justify-center transition-all duration-200 ${RADIO_GENERAL} border ${dudaYo ? (isDark ? 'bg-yellow-500 text-white border-yellow-500 shadow-none' : 'bg-yellow-500 text-white border-yellow-500 shadow-md shadow-yellow-200') : (isDark ? 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 shadow-sm')}`}>NO SÉ</button>
-                              <button onClick={() => toggleAsistencia(j.id, 'paso')} className={`h-9 text-[9px] font-black uppercase tracking-widest flex items-center justify-center transition-all duration-200 ${RADIO_GENERAL} border ${pasoYo ? (isDark ? 'bg-red-500 text-white border-red-500 shadow-none' : 'bg-red-500 text-white border-red-500 shadow-md shadow-red-200') : (isDark ? 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 shadow-sm')}`}>PASO</button>
-                            </div>
-
-                            <div className={`mt-auto pt-3 border-t flex-1 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-                              <div className="space-y-1 mb-2 max-h-32 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-                                {(j.excusas ?? []).map((c: any, idx: number) => {
-                                  const ringColor = (j.confirmados ?? []).includes(c.usuario) ? `ring-2 ring-green-500 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}` : (j.dudosos ?? []).includes(c.usuario) ? `ring-2 ring-yellow-400 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}` : (j.rechazados ?? []).includes(c.usuario) ? `ring-2 ring-red-500 ring-offset-1 ${isDark ? 'ring-offset-slate-900' : 'ring-offset-white'}` : 'border-transparent';
-                                  return (
-                                    <div key={idx} className={`flex items-center gap-2 group/comment relative py-1 rounded-lg px-1 transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
-                                      <img src={getFotoUsuario(c.usuario)} className={`w-5 h-5 rounded-full object-cover shadow-sm shrink-0 ${ringColor}`} alt="avatar" />
-                                      <div className={`flex-1 text-[11px] font-medium leading-tight line-clamp-3 break-words ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                                        <span className={`font-black uppercase mr-1 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{c.usuario}:</span>
-                                        {c.texto}
-                                        {c.timestamp && <span className={`block mt-0.5 text-[8px] font-bold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{obtenerTiempoRelativo(c.timestamp)}</span>}
-                                      </div>
-                                      {c.usuario === usuarioLogueado && <button onClick={() => borrarComentario(j.id, c.texto)} className={`font-bold text-[9px] transition-colors ml-2 px-1 ${isDark ? 'text-slate-500 hover:text-red-400' : 'text-slate-400 hover:text-red-500'}`} title="Borrar comentario">✕</button>}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <div className="relative w-full mt-2">
-                                <input type="text" maxLength={120} placeholder="Escribí un comentario..." value={comentariosInputs[j.id] || ''} onChange={e => setComentariosInputs(p => ({ ...p, [j.id]: e.target.value }))} onKeyDown={e => e.key === 'Enter' && agregarComentario(j.id)} className={`w-full h-8 pl-3 pr-8 rounded-lg text-[9px] font-bold outline-none focus:ring-1 transition-all border ${isDark ? 'bg-slate-900 border-slate-700 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-violet-300 placeholder:text-slate-400'}`} />
-                                <button onClick={() => agregarComentario(j.id)} className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 bg-violet-600 hover:bg-violet-700 text-white rounded-md flex items-center justify-center shadow-sm active:scale-95 transition-all"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {vistaPrincipal === 'POSTEOS' && (
-                <div className="flex-1 space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex justify-between items-end mb-4 px-1"><h2 className={`text-2xl font-black tracking-tighter uppercase flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>PUBLICACIONES <span className="text-lg">📸</span></h2><motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setMostrandoFormPosteo(true)} className={`bg-violet-600 text-white font-black shadow-md shadow-violet-200 hover:bg-violet-700 transition-all uppercase tracking-widest flex items-center justify-center text-[10px] px-4 h-8 ${RADIO_GENERAL} ${isDark ? 'shadow-none' : ''}`}>+ PUBLICAR</motion.button></div>
-                  
-                  {posteos.length === 0 ? (
-                    <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={`border-2 border-dashed ${RADIO_GENERAL} py-12 flex flex-col items-center justify-center text-center mt-2 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300/60'}`}><div className="text-3xl mb-3 opacity-30">👻</div><p className={`text-[10px] font-bold mb-5 uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Mucho silencio visual...</p><motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setMostrandoFormPosteo(true)} className={`bg-violet-600 text-white font-black shadow-md shadow-violet-200 hover:bg-violet-700 transition-all uppercase tracking-widest flex items-center justify-center text-xs px-6 h-10 ${RADIO_GENERAL} ${isDark ? 'shadow-none' : ''}`}>+ PUBLICAR</motion.button></motion.div>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-                        {posteos.slice(0, limitePosteos).map(p => {
-                        const likesValidos = Array.isArray(p.likes) ? p.likes : [];
-                        const dislikesValidos = Array.isArray(p.dislikes) ? p.dislikes : [];
-                        
-                        const yoLeDiLike = likesValidos.includes(usuarioLogueado);
-                        const yoLeDiDislike = dislikesValidos.includes(usuarioLogueado);
-
-                        return (
-                          <motion.div key={p.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={`${ESTETICA_TARJETA(isDark).contenedor} !p-0 overflow-hidden relative`}>
-                            <div className="relative w-full aspect-square bg-slate-100 dark:bg-slate-800">
-                              <img src={p.imagenUrl} className="w-full h-full object-cover" alt="post" loading="lazy" /><div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent h-24 pointer-events-none z-10" />
-                              {p.texto && <><div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 via-black/50 to-transparent pointer-events-none z-10" /><div className="absolute inset-x-0 bottom-0 z-20 flex items-end px-4 pb-5"><h2 className="text-white text-xl sm:text-2xl font-black leading-tight text-left drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{p.texto}</h2></div></>}
-                              <div className="absolute top-4 left-4 z-20"><span className="bg-black/40 backdrop-blur-md text-white border-white/10 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest inline-flex items-center justify-center leading-none shadow-sm border gap-1.5"><img src={getFotoUsuario(p.anonimo ? 'ANÓNIMO' : p.creador)} className="w-3.5 h-3.5 rounded-full object-cover border border-white/20" alt="creador" />{p.anonimo ? 'ANÓNIMO' : p.creador}</span></div>
-                              {(usuarioLogueado === p.creador || usuarioLogueado === 'Tomas') && <div className="absolute top-4 right-4 z-20"><motion.button whileHover={{ scale: 1.1 }} onClick={() => eliminarRegistro(p.id, true)} className="flex items-center justify-center w-6 h-6 rounded-full transition-colors font-bold cursor-pointer text-xs text-white/70 hover:bg-white/20 bg-black/40 backdrop-blur-md hover:text-red-400" title="Eliminar publicación">✕</motion.button></div>}
-                            </div>
-                            <div className="p-4 flex flex-col gap-3">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                  <motion.button whileTap={{ scale: 0.8 }} onClick={() => toggleReaccionPost(p.id, 'like')} className="flex items-center gap-1.5 focus:outline-none">
-                                    <svg viewBox="0 0 24 24" width="22" height="22" fill={yoLeDiLike ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5" className={`transition-colors duration-300 ${yoLeDiLike ? 'text-red-500' : (isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-                                    {(likesValidos.length > 0) && <span className={`text-xs font-black ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{likesValidos.length}</span>}
-                                  </motion.button>
-                                  <motion.button whileTap={{ scale: 0.8 }} onClick={() => toggleReaccionPost(p.id, 'dislike')} className="flex items-center gap-1.5 focus:outline-none">
-                                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors duration-300 ${yoLeDiDislike ? (isDark ? 'text-white' : 'text-slate-900') : (isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path></svg>
-                                    {(dislikesValidos.length > 0) && <span className={`text-xs font-black ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{dislikesValidos.length}</span>}
-                                  </motion.button>
-                                </div>
-                                <span className={`text-[10px] font-bold uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{obtenerTiempoRelativo(p.timestamp)}</span>
-                              </div>
-                              <div className={`pt-3 border-t flex-1 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-                                <div className="space-y-1 mb-2 max-h-32 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-                                  {(p.comentarios ?? []).map((c: any, idx: number) => (
-                                    <div key={idx} className={`flex items-start gap-2 group/postcomment relative py-1 rounded-lg px-1 transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
-                                      <img src={getFotoUsuario(c.usuario)} className="w-5 h-5 rounded-full object-cover shadow-sm shrink-0 border-transparent mt-0.5" alt="avatar" />
-                                      <div className={`flex-1 text-[11px] font-medium leading-tight line-clamp-3 break-words ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                                        <span className={`font-black uppercase mr-1 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{c.usuario}:</span>
-                                        {c.texto}
-                                        {c.timestamp && <span className={`block mt-0.5 text-[8px] font-bold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{obtenerTiempoRelativo(c.timestamp)}</span>}
-                                      </div>
-                                      {(c.usuario === usuarioLogueado || c.creador_real === usuarioLogueado) && <button onClick={() => borrarComentario(p.id, idx, true)} className={`font-bold text-[9px] transition-colors ml-2 px-1 ${isDark ? 'text-slate-500 hover:text-red-400' : 'text-slate-400 hover:text-red-500'}`} title="Borrar comentario">✕</button>}
-                                    </div>
-                                  ))}
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                  <div className="relative w-full">
-                                    <input type="text" maxLength={150} placeholder="Escribí un comentario..." value={comentariosPostInputs[p.id] || ''} onChange={e => setComentariosPostInputs(pr => ({ ...pr, [p.id]: e.target.value }))} onKeyDown={e => e.key === 'Enter' && agregarComentario(p.id, true)} className={`w-full h-8 pl-3 pr-8 rounded-lg text-[9px] font-bold outline-none focus:ring-1 transition-all border ${isDark ? 'bg-slate-900 border-slate-700 text-white focus:ring-violet-500 placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-violet-300 placeholder:text-slate-400'}`} />
-                                    <button onClick={() => agregarComentario(p.id, true)} className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 bg-violet-600 hover:bg-violet-700 text-white rounded-md flex items-center justify-center shadow-sm active:scale-95 transition-all"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 ml-1"><input type="checkbox" id={`anon-com-${p.id}`} checked={comentarioAnonimoPost[p.id] || false} onChange={e => setComentarioAnonimoPost(pr => ({ ...pr, [p.id]: e.target.checked }))} className="w-3 h-3 text-violet-600 bg-slate-100 border-slate-300 rounded focus:ring-violet-500 cursor-pointer" /><label htmlFor={`anon-com-${p.id}`} className={`text-[8px] font-black uppercase tracking-widest cursor-pointer ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Comentar Anónimo</label></div>
-                                </div>
-                              </div>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
+                    <div className={`relative w-full aspect-[4/5] sm:aspect-[3/4] overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                      <div className="absolute top-1.5 left-1.5 sm:top-2.5 sm:left-2.5 z-40 flex flex-wrap gap-1 sm:gap-1.5 pointer-events-none max-w-[85%]">
+                        <span className="inline-flex items-center justify-center text-[6px] sm:text-[8px] font-semibold px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-full uppercase tracking-wider leading-none shadow-sm bg-violet-600 text-white">{producto.estado}</span>
+                        <span className="inline-flex items-center justify-center text-[6px] sm:text-[8px] font-semibold px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-full uppercase tracking-wider leading-none shadow-sm backdrop-blur-md truncate max-w-full bg-black/40 text-slate-200 border border-white/10">{producto.condicion_estetica}</span>
                       </div>
-                      
-                      {posteos.length > limitePosteos && (
-                        <div className="pt-4 flex justify-center">
-                          <motion.button 
-                            whileHover={{ scale: 1.05 }} 
-                            whileTap={{ scale: 0.95 }} 
-                            onClick={() => setLimitePosteos(prev => prev + 6)} 
-                            className={`h-10 px-6 ${RADIO_GENERAL} text-[10px] font-black uppercase tracking-widest transition-all border-2 flex items-center gap-2 ${isDark ? 'bg-slate-800 text-slate-400 border-slate-700 hover:border-violet-500 hover:text-violet-400' : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300 hover:text-violet-600 shadow-sm'}`}
-                          >
-                            ⬇ MOSTRAR MÁS ({posteos.length - limitePosteos})
-                          </motion.button>
+                      <div className="absolute inset-x-0 bottom-0 h-[40%] bg-gradient-to-t from-black/80 to-transparent z-20 pointer-events-none"></div>
+                      {producto.tags && producto.tags.length > 0 && (
+                        <div className="absolute bottom-1.5 left-1.5 sm:bottom-2.5 sm:left-2.5 z-40 flex flex-wrap justify-start gap-1 sm:gap-1.5 pointer-events-none max-w-[70%]">
+                          {producto.tags.map((tag: string) => (
+                            <span key={tag} className="inline-flex items-center gap-0.5 sm:gap-1 text-[6px] sm:text-[8px] font-medium px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-full uppercase tracking-wider leading-none shadow-sm backdrop-blur-md max-w-full bg-black/40 text-slate-200 border border-white/10">
+                              {tag === 'Touch' && <img src="https://i.imgur.com/QAPfztS.png" alt="" className="w-2.5 h-2.5 sm:w-3 sm:h-3 object-contain flex-shrink-0" />}
+                              {tag === '2 en 1' && <img src="https://i.imgur.com/LMqDtPC.png" alt="" className="w-4 h-4 object-contain flex-shrink-0 -my-1" />}
+                              {tag}
+                            </span>
+                          ))}
                         </div>
                       )}
-                    </>
-                  )}
-                </div>
-              )}
+                      <div className="absolute bottom-1.5 right-1.5 sm:bottom-2.5 sm:right-2.5 z-40 pointer-events-none">{getLogoBrand(producto.marca, producto.modelo, 'w-8 sm:w-10 h-auto object-contain drop-shadow-md')}</div>
+                      <SliderTarjeta imagenes={producto.imagenes || []} alt={`${producto.marca} ${producto.modelo}`} isDark={isDark} />
+                    </div>
+
+                    <div className="p-2 sm:p-3 flex flex-col flex-1 w-full min-w-0">
+                      <div className="flex items-center justify-center gap-1.5 mb-1.5 sm:mb-2 min-w-0 w-full"><span className="text-[10px] sm:text-sm shrink-0">💻</span><h3 className={`text-[12px] sm:text-[14px] font-semibold tracking-tight leading-none truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{producto.marca} {producto.modelo}</h3></div>
+                      
+                      <div className={`grid grid-cols-2 gap-y-1.5 sm:gap-y-2 gap-x-1 sm:gap-x-2 py-1.5 sm:py-2 border-t border-b mb-1.5 sm:mb-2 w-full min-w-0 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                        {getSpecsList(producto).map((s, i) => (
+                          <div key={i} className="flex items-center justify-start gap-2 sm:gap-2.5 min-w-0 w-full pl-0.5 sm:pl-2">
+                            <img src={s.i} alt={s.l} className={`w-4 h-4 sm:w-6 sm:h-6 object-contain shrink-0 ${isDark ? 'invert opacity-70' : 'opacity-70'}`} />
+                            <div className="flex flex-col justify-center leading-none min-w-0 text-left w-full">
+                              <span className={`text-[6.5px] sm:text-[8px] font-medium uppercase tracking-wider mb-[1px] truncate w-full ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{s.l}</span>
+                              <span className={`text-[8.5px] sm:text-[10px] font-semibold leading-none truncate w-full ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{s.v}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-auto flex flex-col justify-center items-center min-w-0 w-full h-[32px] sm:h-[50px]">
+                        {producto.precio_oferta ? (
+                          <><span className={`text-[9px] sm:text-[11px] line-through font-medium truncate w-full text-center ${isDark ? 'text-slate-500' : 'text-slate-400'} -mb-0.5`}>{formatearPrecio(producto.precio)}</span>
+                          <div className="flex items-center justify-center gap-1.5 min-w-0 w-full"><span className={`text-[14px] sm:text-[20px] font-display font-bold tracking-tight truncate ${isDark ? 'text-blue-400' : 'text-[#005bd3]'}`}>{formatearPrecio(producto.precio_oferta)}</span>{producto.descuento && <span className="bg-red-600 text-white text-[7px] sm:text-[9px] font-semibold px-1 sm:px-1.5 py-0.5 rounded shrink-0">-{producto.descuento}%</span>}</div></>
+                        ) : (
+                          <span className={`text-[14px] sm:text-[20px] font-display font-bold tracking-tight truncate w-full text-center ${isDark ? 'text-blue-400' : 'text-[#005bd3]'}`}>{formatearPrecio(producto.precio)}</span>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
-            
-            {/* Contenedor de Discord */}
-            <div className="w-full lg:w-[280px] xl:w-[320px] shrink-0 order-1 lg:order-2 lg:sticky lg:top-6 mt-0 lg:mt-[134px]">
-              <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={`p-5 ${RADIO_GENERAL} border transition-colors duration-300 ${isDark ? 'bg-slate-900 border-slate-800 shadow-none' : 'bg-white border-slate-200/80 shadow-xl shadow-slate-200/60'}`}>
-                <div 
-                  onClick={() => window.open('https://discord.gg/EvmuKpMjGA', '_blank')}
-                  className={`flex justify-between items-center mb-4 pb-3 border-b cursor-pointer hover:opacity-80 transition-opacity ${isDark ? 'border-slate-800' : 'border-slate-100'}`}
-                  title="Unirse al servidor de Discord"
-                >
-                  <div className="flex items-center gap-3">
-                    <img src="https://i.imgur.com/NZUspLh.png" className={`w-9 h-9 rounded-xl object-cover border ${isDark ? 'border-slate-700' : 'border-slate-200 shadow-sm'}`} alt="Server Logo" />
-                    <div className="flex flex-col"><h3 className={`text-[11px] font-black uppercase tracking-widest leading-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>{discordData?.name || 'TEAM SOLOMILLO'}</h3>{discordData && !discordData.errorMensaje && <div className="flex items-center gap-1.5 mt-0.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)]"></span><span className={`text-[8px] font-black uppercase tracking-widest ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>En línea</span></div>}</div>
+          )}
+        </main>
+      )}
+
+      {/* ========================================================
+          🚀 GESTOR DE PROMOCIONES (Solo lo ve el Admin)
+      ======================================================== */}
+      <AnimatePresence>
+        {mostrandoGestorPromos && isAdmin && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-2 sm:p-4 font-sans">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMostrandoGestorPromos(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className={`relative w-full max-w-lg max-h-[95vh] flex flex-col shadow-2xl rounded-3xl z-10 overflow-hidden ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-[#F4F6F8]'}`}>
+              <div className={`p-4 sm:p-5 border-b flex justify-between items-center shrink-0 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <h2 className={`text-lg font-display font-bold uppercase tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>Gestor de Promociones</h2>
+                <button onClick={() => setMostrandoGestorPromos(false)} className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}>✕</button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+                <div>
+                  <div className="flex justify-between items-end mb-2"><h3 className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>1. Barra de Anuncio Superior</h3></div>
+                  <div className={`p-4 rounded-2xl border space-y-2 ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
+                    <input type="text" placeholder="Ej: 🔥 ENVÍO GRATIS ESTE FINDE 🔥" className={`${estForm.input} h-11 ${RADIO_GENERAL}`} value={textoAnuncioDraft} onChange={e => setTextoAnuncioDraft(e.target.value)} />
+                    <button onClick={() => { setTextoAnuncio(textoAnuncioDraft); guardarAnuncioDB(textoAnuncioDraft); setMostrandoGestorPromos(false); }} className={`w-full h-11 mt-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md flex items-center justify-center ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500 shadow-none' : 'bg-violet-600 text-white hover:bg-violet-700 shadow-violet-200'}`}>Guardar Anuncio</button>
+                    <p className={`text-[9px] font-medium uppercase tracking-wider pl-1 mt-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>* Hacé clic en guardar para aplicar los cambios en la tienda. Si lo dejás vacío, la barra desaparece.</p>
                   </div>
                 </div>
                 <div>
-                  {discordLoading && !discordData ? (
-                    <div className="animate-pulse flex gap-2"><div className={`w-7 h-7 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}></div><div className={`w-7 h-7 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}></div></div>
-                  ) : canalesConGente.length > 0 ? (
-                    <div className="space-y-4">
-                      {canalesConGente.map((c: any) => (
-                        <div key={c.id}>
-                          <p className={`text-[9px] font-black uppercase tracking-widest mb-2 flex items-center gap-1.5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`}><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>{c.name}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {c.members.map((m: any) => (
-                              <div key={m.id} className={`w-fit inline-flex items-center gap-2 p-1 pr-3 rounded-full border transition-all cursor-default ${isDark ? 'bg-slate-800/50 border-slate-700 hover:border-violet-500/50 hover:bg-slate-800' : 'bg-slate-50 border-slate-200 hover:border-violet-300 hover:bg-white shadow-sm'}`}>
-                                <div className="relative shrink-0"><img src={m.avatar_url} className="w-5 h-5 rounded-full object-cover" alt={m.username} /><span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 ${isDark ? 'border-slate-800' : 'border-slate-50'} ${m.status === 'online' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span></div>
-                                <div className="flex flex-col justify-center">
-                                  <div className="flex items-center gap-1"><span className={`text-[9px] font-black leading-none ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{m.username}</span><div className="flex items-center gap-0.5">{(m.deaf || m.self_deaf) && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><line x1="2" y1="2" x2="22" y2="22" /><path d="M18.5 15.5A4.5 4.5 0 0 1 21 12V9a9 9 0 0 0-14.7-6.8" /><path d="M3 14v-2A9 9 0 0 1 7.2 4.8" /><path d="M21 12v4a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3" /><path d="M3 12v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H3" /></svg>}{((m.mute || m.self_mute) && !(m.deaf || m.self_deaf)) && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><line x1="2" y1="2" x2="22" y2="22" /><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" /><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>}</div></div>
-                                  {m.game && <span className={`text-[6px] font-bold uppercase leading-none mt-0.5 truncate max-w-[70px] ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>{m.game.name}</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                  <h3 className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>2. Banners Activos ({banners.length})</h3>
+                  <div className="space-y-2">
+                    {banners.map((b, index) => (
+                      <div key={b.id} className={`flex items-center gap-3 p-2 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <div className="w-16 h-8 rounded bg-slate-200 overflow-hidden shrink-0">
+                          <img src={b.imgDesktop} alt="Miniatura" className="w-full h-full object-cover" />
                         </div>
+                        <span className={`text-xs font-medium flex-1 truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Banner {index + 1}</span>
+                        <button onClick={() => eliminarBanner(b.id)} className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                      </div>
+                    ))}
+                    {banners.length === 0 && <p className={`text-xs text-center py-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>No hay banners configurados.</p>}
+                  </div>
+                </div>
+
+                <div className={`p-4 sm:p-5 rounded-2xl border space-y-4 ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
+                  <h3 className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>3. Añadir Nuevo Banner de Imagen</h3>
+                  {[{id: 'desktop', dim: '1920x730', val: nuevoBannerDesktop, icon: '💻'}, {id: 'mobile', dim: '1080x600', val: nuevoBannerMobile, icon: '📱'}].map(i => (
+                    <div key={i.id} className={`relative w-full h-12 rounded-xl flex items-center justify-center transition-colors overflow-hidden border-2 border-dashed ${i.val ? (isDark ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-emerald-500/50 bg-emerald-50') : (isDark ? 'border-slate-600 bg-slate-800/50 hover:bg-slate-700' : 'border-slate-300 bg-slate-50 hover:bg-slate-100')}`}>
+                      <input type="file" accept="image/*" onChange={(e) => manejarSubidaImagenBanner(e, i.id as any)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${i.val ? 'text-emerald-500' : (isDark ? 'text-slate-400' : 'text-slate-500')}`}>{i.val ? `✅ Imagen ${i.id==='desktop'?'Web':'Celular'} Lista` : `${i.icon} Subir Imagen ${i.id==='desktop'?'Web':'Celular'} (${i.dim})`}</span>
+                    </div>
+                  ))}
+                  <div><label className={estForm.label}>Link de la oferta (Opcional)</label><input type="url" placeholder="Ej: https://..." className={`${estForm.input} h-10 ${RADIO_GENERAL}`} value={nuevoBannerLink} onChange={e => setNuevoBannerLink(e.target.value)} /></div>
+                  
+                  <button onClick={guardarBannerNuevo} disabled={estaGuardandoBanners} className={`w-full h-11 mt-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md flex items-center justify-center ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500 shadow-none' : 'bg-violet-600 text-white hover:bg-violet-700 shadow-violet-200'} disabled:opacity-50`}>
+                    {estaGuardandoBanners ? '⏳ GUARDANDO BANNER...' : '💾 GUARDAR BANNER'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================
+          🚀 POP-UP DE VISTA RÁPIDA / COMPRA
+      ======================================================== */}
+      <AnimatePresence>
+        {productoSeleccionado && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 font-sans">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setProductoSeleccionado(null)} className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className={`relative w-full max-w-4xl max-h-[95vh] sm:max-h-[96vh] flex flex-col md:flex-row shadow-2xl rounded-3xl overflow-y-auto md:overflow-hidden z-10 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-white'}`}>
+              <button onClick={() => setProductoSeleccionado(null)} className="md:hidden absolute top-2 right-2 z-50 w-7 h-7 flex items-center justify-center rounded-full bg-black/50 backdrop-blur-md text-white border border-white/20">✕</button>
+              
+              <div className={`w-full md:w-1/2 relative aspect-[4/3] sm:aspect-[4/5] md:aspect-[3/4] shrink-0 overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                <AnimatePresence initial={false}>
+                  <motion.img 
+                    key={idxImagenModal} 
+                    initial={{ opacity: 0, scale: 1.05 }} 
+                    animate={{ opacity: 1, scale: 1 }} 
+                    exit={{ opacity: 0, scale: 1 }} 
+                    transition={{ duration: 0.3, ease: "easeOut" }} 
+                    src={productoSeleccionado.imagenes[idxImagenModal]} 
+                    alt={productoSeleccionado.modelo} 
+                    className="absolute inset-0 w-full h-full object-cover" 
+                    decoding="async"
+                  />
+                </AnimatePresence>
+                <div className="absolute inset-x-0 bottom-0 h-[45%] bg-gradient-to-t from-black/90 via-black/50 to-transparent z-10 pointer-events-none"></div>
+                <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-20 flex flex-wrap gap-1 sm:gap-1.5 pointer-events-none max-w-[85%]">
+                  <span className="inline-flex items-center justify-center text-[8px] sm:text-[9px] font-semibold px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-full uppercase tracking-wider leading-none shadow-sm bg-violet-600 text-white">{productoSeleccionado.estado}</span>
+                  <span className="inline-flex items-center justify-center text-[8px] sm:text-[9px] font-semibold px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-full uppercase tracking-wider leading-none shadow-sm backdrop-blur-md truncate max-w-full bg-black/40 text-slate-200 border border-white/10">{productoSeleccionado.condicion_estetica}</span>
+                </div>
+                {productoSeleccionado.imagenes.length > 1 && (
+                  <><button onClick={(e) => { e.stopPropagation(); setIdxImagenModal(p => p === 0 ? productoSeleccionado.imagenes.length - 1 : p - 1); }} className="sm:hidden absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/60 transition-all z-30"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                  <button onClick={(e) => { e.stopPropagation(); setIdxImagenModal(p => p === productoSeleccionado.imagenes.length - 1 ? 0 : p + 1); }} className="sm:hidden absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/60 transition-all z-30"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button></>
+                )}
+                {productoSeleccionado.tags && productoSeleccionado.tags.length > 0 && (
+                  <div className={`absolute z-20 flex flex-wrap justify-start gap-1 sm:gap-1.5 pointer-events-none max-w-[70%] left-3 sm:left-4 ${productoSeleccionado.imagenes.length > 1 ? 'bottom-3 sm:bottom-24' : 'bottom-3 sm:bottom-4'}`}>
+                    {productoSeleccionado.tags.map((tag: string) => (
+                      <span key={tag} className="inline-flex items-center gap-1 sm:gap-1.5 text-[8px] sm:text-[9px] font-medium px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-full uppercase tracking-wider leading-none shadow-sm backdrop-blur-md max-w-full bg-black/40 text-slate-200 border border-white/10">
+                        {tag === 'Touch' && <img src="https://i.imgur.com/QAPfztS.png" alt="" className="w-2.5 h-2.5 sm:w-3 sm:h-3 object-contain flex-shrink-0" />}{tag === '2 en 1' && <img src="https://i.imgur.com/LMqDtPC.png" alt="" className="w-4 h-4 sm:w-5 sm:h-5 object-contain flex-shrink-0 -my-1" />}{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className={`absolute z-20 pointer-events-none right-3 sm:right-4 ${productoSeleccionado.imagenes.length > 1 ? 'bottom-3 sm:bottom-24' : 'bottom-3 sm:bottom-4'}`}>{getLogoBrand(productoSeleccionado.marca, productoSeleccionado.modelo, 'w-10 sm:w-12 h-auto object-contain drop-shadow-lg')}</div>
+                {productoSeleccionado.imagenes.length > 1 && (
+                  <div className="hidden sm:flex absolute bottom-4 left-0 right-0 z-30 justify-center gap-2 px-4 overflow-x-auto scrollbar-hide py-1">
+                    {productoSeleccionado.imagenes.map((img: string, idx: number) => (
+                      <button key={idx} onClick={() => setIdxImagenModal(idx)} className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden shrink-0 transition-all border-2 ${idxImagenModal === idx ? 'border-violet-500 scale-110 shadow-lg shadow-violet-500/40 z-10' : 'border-white/20 opacity-60 hover:opacity-100 hover:scale-105'}`}><img src={img} alt={`Miniatura ${idx}`} className="w-full h-full object-cover" /></button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="w-full md:w-1/2 p-4 sm:p-5 lg:p-6 flex flex-col relative flex-1 md:overflow-y-auto">
+                <button onClick={() => setProductoSeleccionado(null)} className={`hidden md:flex absolute top-4 right-4 w-7 h-7 items-center justify-center rounded-full transition-colors font-medium z-10 ${isDark ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800'}`}>✕</button>
+                <div className="flex flex-col flex-1">
+                  <div className={`mb-3 py-3 md:py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'} flex flex-col justify-center md:items-start items-center md:text-left text-center min-h-[90px]`}>
+                    <h2 className={`text-xl sm:text-2xl md:text-3xl font-display font-bold tracking-tight leading-tight px-4 md:px-0 md:pr-10 ${isDark ? 'text-white' : 'text-slate-900'}`}>{productoSeleccionado.marca} {productoSeleccionado.modelo}</h2>
+                    <div className="flex items-center justify-center md:justify-start gap-1.5 w-full mt-1.5">
+                      <div className={`w-2 h-2 rounded-full shrink-0 shadow-sm ${productoSeleccionado.disponibilidad === 'En Stock' ? 'bg-emerald-500 animate-pulse shadow-emerald-500/50' : 'bg-red-500 shadow-red-500/50'}`}></div>
+                      <span className={`text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider ${productoSeleccionado.disponibilidad === 'En Stock' ? 'text-emerald-500' : 'text-red-500'}`}>{productoSeleccionado.disponibilidad === 'En Stock' ? 'En stock, listo para entregar' : 'Agotado'}</span>
+                    </div>
+                  </div>
+
+                  <div className={`flex items-start justify-between pb-4 mb-3 gap-1 sm:gap-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                    {getSpecsList(productoSeleccionado).map((s, i) => (
+                      <div key={i} className={`flex flex-col items-center justify-center flex-1 min-w-0 text-center ${i > 0 ? `border-l ${isDark ? 'border-slate-800' : 'border-slate-200'}` : ''}`}>
+                        <img src={s.i} alt={s.l} className={`w-5 h-5 sm:w-6 sm:h-6 mb-1.5 object-contain shrink-0 ${isDark ? 'invert opacity-70' : 'opacity-70'}`} />
+                        <span className={`text-[7px] sm:text-[8px] font-medium uppercase tracking-wider mb-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{s.l}</span>
+                        <span className={`text-[9px] sm:text-[11px] font-semibold leading-none truncate w-full px-0.5 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{s.v}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mb-4">
+                    <p className={`text-[8px] sm:text-[9px] font-semibold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Software Incluido</p>
+                    <div className="flex flex-nowrap gap-1.5 sm:gap-2 justify-center overflow-hidden">
+                      {[{ name: 'Windows 11', img: 'https://img.icons8.com/color/48/windows-11.png' }, { name: 'Word', img: 'https://img.icons8.com/color/48/microsoft-word-2019--v2.png' }, { name: 'Excel', img: 'https://img.icons8.com/color/48/microsoft-excel-2019--v1.png' }, { name: 'PowerPoint', img: 'https://img.icons8.com/color/48/microsoft-powerpoint-2019--v1.png' }].map(soft => (
+                        <div key={soft.name} className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border shadow-sm flex-shrink-0 ${isDark ? 'bg-slate-800/80 border-slate-700/80' : 'bg-slate-50 border-slate-200/80'}`}><img src={soft.img} alt={soft.name} className="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain flex-shrink-0" /><span className={`text-[10px] sm:text-[11px] font-medium whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{soft.name}</span></div>
                       ))}
                     </div>
-                  ) : <div className="py-3 text-center"><p className={`text-[9px] font-black uppercase tracking-widest opacity-40 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>NO HAY NADIE CONECTADO 🫤</p></div>}
+                  </div>
+
+                  <div className={`text-[12px] sm:text-[13px] leading-relaxed whitespace-pre-line ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{productoSeleccionado.descripcion}</div>
+
+                  <div className={`mt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'} flex flex-col`}>
+                    <div className="py-4 flex items-center justify-center w-full">
+                      {productoSeleccionado.precio_oferta ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <div className={`inline-flex items-center justify-center px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#2a344e]`}><span className="text-base sm:text-lg text-white font-display font-bold tracking-tight leading-none">{formatearPrecio(productoSeleccionado.precio_oferta)}</span></div>
+                          <span className={`text-xs sm:text-sm line-through font-medium ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{formatearPrecio(productoSeleccionado.precio)}</span>
+                          {productoSeleccionado.descuento && <span className="bg-red-600 text-white text-[7px] sm:text-[9px] font-semibold px-1.5 py-0.5 rounded">-{productoSeleccionado.descuento}%</span>}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center"><div className={`inline-flex items-center justify-center px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#2a344e]`}><span className="text-base sm:text-lg text-white font-display font-bold tracking-tight leading-none">{formatearPrecio(productoSeleccionado.precio)}</span></div></div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-row gap-2 sm:gap-3 w-full">
+                        <button onClick={() => { agregarAlCarrito(productoSeleccionado); setProductoSeleccionado(null); setCarritoAbierto(true); }} className={`flex-1 h-12 sm:h-11 px-1 sm:px-4 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all shadow-md flex items-center justify-center leading-tight ${isDark ? 'bg-slate-800 text-white hover:bg-slate-700 shadow-none' : 'bg-white border-2 border-slate-900 text-slate-900 hover:bg-slate-50 shadow-none'}`}>Añadir al carrito</button>
+                        <button onClick={() => { agregarAlCarrito(productoSeleccionado); setProductoSeleccionado(null); setMostrandoCheckout(true); }} className={`flex-1 h-12 sm:h-11 px-1 sm:px-4 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-violet-200 flex items-center justify-center leading-tight ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500 shadow-none' : 'bg-violet-600 text-white hover:bg-violet-700'}`}>Comprar ahora</button>
+                      </div>
+                      <div className={`flex items-center justify-between px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl border ${isDark ? 'bg-slate-800/60 border-slate-700/60' : 'bg-slate-50 border-slate-200/80'}`}>
+                        <div className="flex items-center gap-1.5 sm:gap-2"><span className="text-xs sm:text-sm">💳</span><span className={`text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Aceptamos tarjetas y transferencias</span></div>
+                        <div className="flex items-center gap-1.5"><img src="https://img.icons8.com/color/48/visa.png" alt="Visa" className="w-5 h-5 sm:w-6 sm:h-6 object-contain" /><img src="https://img.icons8.com/color/48/mastercard.png" alt="Mastercard" className="w-5 h-5 sm:w-6 sm:h-6 object-contain" /></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </motion.div>
-            </div>
+              </div>
+            </motion.div>
           </div>
-        </main>
-      )}
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================
+          🛒 SIDEBAR DEL CARRITO
+      ======================================================== */}
+      <AnimatePresence>
+        {carritoAbierto && (
+          <div className="fixed inset-0 z-[200] flex justify-end font-sans">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setCarritoAbierto(false)} className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-pointer" />
+            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className={`relative w-full sm:w-96 h-full shadow-2xl flex flex-col z-10 ${isDark ? 'bg-slate-900 border-l border-slate-800' : 'bg-white'}`}>
+              <div className={`p-4 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                <div className="flex items-center gap-2"><span className="text-xl">🛒</span><h2 className={`text-lg font-display font-bold uppercase tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>Tu Carrito</h2></div>
+                <button onClick={() => setCarritoAbierto(false)} className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}>✕</button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+                {carrito.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center opacity-50"><span className="text-4xl mb-2">🛍️</span><p className={`text-sm font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Tu carrito está vacío</p></div>
+                ) : (
+                  carrito.map((item) => (
+                    <div key={item.producto.id} className={`flex gap-3 p-3 rounded-2xl border ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-slate-50 border-slate-200/50'}`}>
+                      <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-white"><img src={item.producto.imagenes[0]} alt={item.producto.modelo} className="w-full h-full object-cover" /></div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <h3 className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.producto.marca} {item.producto.modelo}</h3>
+                        <span className={`text-[10px] font-semibold mt-1 ${isDark ? 'text-blue-400' : 'text-[#005bd3]'}`}>{formatearPrecio(item.producto.precio_oferta || item.producto.precio)}</span>
+                        <div className="flex items-center justify-between mt-auto pt-2">
+                          <div className={`flex items-center rounded-lg border ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'}`}>
+                            <button onClick={() => restarCantidad(item.producto.id)} className={`w-6 h-6 flex items-center justify-center text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>-</button>
+                            <span className={`w-6 text-center text-[10px] font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.cantidad}</span>
+                            <button onClick={() => sumarCantidad(item.producto.id)} className={`w-6 h-6 flex items-center justify-center text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>+</button>
+                          </div>
+                          <button onClick={() => eliminarDelCarrito(item.producto.id)} className={`p-1.5 rounded-md transition-colors ${isDark ? 'text-slate-500 hover:text-red-400 hover:bg-slate-800' : 'text-slate-400 hover:text-red-500 hover:bg-slate-200'}`} title="Eliminar del carrito"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              {carrito.length > 0 && (
+                <div className={`p-4 border-t bg-opacity-90 backdrop-blur-md shrink-0 ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+                  <div className="flex items-center justify-between mb-4"><span className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total a pagar</span><span className={`text-xl font-display font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatearPrecio(totalCarrito)}</span></div>
+                  <div className="flex flex-col gap-2">
+                    <button onClick={() => { setCarritoAbierto(false); setMostrandoCheckout(true); }} className={`w-full h-12 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-violet-200 flex items-center justify-center bg-violet-600 text-white hover:bg-violet-700 ${isDark ? 'shadow-none hover:bg-violet-500' : ''}`}>Finalizar Compra</button>
+                    <button onClick={() => setCarritoAbierto(false)} className={`w-full h-12 rounded-xl text-xs font-bold uppercase tracking-wider transition-all border-2 flex items-center justify-center ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>Volver al Catálogo</button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================
+          🚀 MODAL DE CHECKOUT
+      ======================================================== */}
+      <AnimatePresence>
+        {mostrandoCheckout && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-2 sm:p-4 font-sans">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMostrandoCheckout(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className={`relative w-full max-w-lg max-h-[95vh] flex flex-col shadow-2xl rounded-3xl z-10 overflow-hidden ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-[#F4F6F8]'}`}>
+              <div className={`p-4 sm:p-5 border-b flex justify-between items-center shrink-0 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <h2 className={`text-lg font-display font-bold uppercase tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>Completar Pedido</h2>
+                <button onClick={() => setMostrandoCheckout(false)} className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}>✕</button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+                <div>
+                  <h3 className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Resumen de Compra</h3>
+                  <div className={`p-3 sm:p-4 rounded-2xl border space-y-3 ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
+                    {carrito.map(item => (
+                      <div key={item.producto.id} className="flex justify-between items-center text-sm">
+                        <span className={`truncate mr-2 font-medium text-xs sm:text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{item.cantidad}x {item.producto.marca} {item.producto.modelo}</span>
+                        <span className={`font-semibold shrink-0 text-xs sm:text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatearPrecio((item.producto.precio_oferta || item.producto.precio) * item.cantidad)}</span>
+                      </div>
+                    ))}
+                    <div className={`pt-3 border-t flex justify-between items-center mt-3 ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
+                      <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-white' : 'text-slate-900'}`}>Total</span>
+                      <span className={`text-lg font-display font-bold ${isDark ? 'text-blue-400' : 'text-[#005bd3]'}`}>{formatearPrecio(totalCarrito)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>1. Datos de Contacto</h3>
+                  <div className={`p-4 sm:p-5 rounded-2xl border space-y-4 ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
+                    <div><label className={estForm.label}>Nombre y Apellido *</label><input type="text" placeholder="Ej: Juan Pérez" className={`${estForm.input} h-11 ${RADIO_GENERAL}`} value={datosCliente.nombre} onChange={e => setDatosCliente({...datosCliente, nombre: e.target.value})} /></div>
+                    <div><label className={estForm.label}>WhatsApp *</label><input type="tel" placeholder="Ej: 0981 123 456" className={`${estForm.input} h-11 ${RADIO_GENERAL}`} value={datosCliente.whatsapp} onChange={e => setDatosCliente({...datosCliente, whatsapp: e.target.value})} /></div>
+                    <div><label className={estForm.label}>Email <span className="lowercase font-normal opacity-70">(Opcional)</span></label><input type="email" placeholder="Ej: juan@correo.com" className={`${estForm.input} h-11 ${RADIO_GENERAL}`} value={datosCliente.email} onChange={e => setDatosCliente({...datosCliente, email: e.target.value})} /></div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>2. Tipo de Envío</h3>
+                  <div className="grid grid-cols-1 gap-3">
+                    {[{id: 'retiro', emoji: '🏠', t: 'Paso a retirar', d: 'Pasás a retirar de nuestro local.'}, {id: 'delivery', emoji: '🚚', t: 'Envío gratis con delivery propio', d: 'En departamento central.'}, {id: 'encomienda', emoji: '📦', t: 'Transportadora', d: 'Envío por encomienda, pagás al retirar de la agencia.'}].map(op => (
+                      <button key={op.id} onClick={() => setTipoEnvio(op.id as any)} className={`p-4 rounded-2xl border text-left transition-all flex gap-3 relative overflow-hidden ${tipoEnvio === op.id ? (isDark ? 'border-violet-500 bg-violet-900/20 ring-1 ring-violet-500' : 'border-violet-500 bg-violet-50 ring-1 ring-violet-500') : (isDark ? 'border-slate-700 bg-slate-800/80 hover:border-slate-600' : 'border-slate-200 bg-white hover:border-slate-300 shadow-sm')}`}>
+                        <span className="text-2xl mt-0.5">{op.emoji}</span>
+                        <div className="flex flex-col pr-6">
+                          <span className={`text-sm font-bold mb-0.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>{op.t}</span>
+                          <span className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{op.d}</span>
+                        </div>
+                        {tipoEnvio === op.id && <div className="absolute top-4 right-4 text-violet-600 dark:text-violet-400"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-.997-6l7.07-7.071-1.414-1.414-5.656 5.657-2.829-2.829-1.414 1.414L11.003 16z"/></svg></div>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>3. Método de Pago</h3>
+                  <div className="grid grid-cols-1 gap-3">
+                    {[{id: 'transferencia', emoji: '💸', t: 'Transferencia bancaria o efectivo', d: 'Abonás de forma rápida y segura al recibir o retirar tu equipo.'}, {id: 'tarjeta', emoji: '💳', t: 'Tarjeta de crédito', d: 'Aceptamos Visa y Mastercard (física o contactless). Podés pagar con Apple Pay o Google Pay.'}].map(op => (
+                      <button key={op.id} onClick={() => setMetodoPago(op.id as any)} className={`p-4 rounded-2xl border text-left transition-all flex gap-3 relative overflow-hidden ${metodoPago === op.id ? (isDark ? 'border-violet-500 bg-violet-900/20 ring-1 ring-violet-500' : 'border-violet-500 bg-violet-50 ring-1 ring-violet-500') : (isDark ? 'border-slate-700 bg-slate-800/80 hover:border-slate-600' : 'border-slate-200 bg-white hover:border-slate-300 shadow-sm')}`}>
+                        <span className="text-2xl mt-0.5">{op.emoji}</span>
+                        <div className="flex flex-col pr-6">
+                          <span className={`text-sm font-bold mb-0.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>{op.t}</span>
+                          <span className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{op.d}</span>
+                        </div>
+                        {metodoPago === op.id && <div className="absolute top-4 right-4 text-violet-600 dark:text-violet-400"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-.997-6l7.07-7.071-1.414-1.414-5.656 5.657-2.829-2.829-1.414 1.414L11.003 16z"/></svg></div>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {(tipoEnvio === 'delivery' || tipoEnvio === 'encomienda') && (
+                    <motion.div initial={{ opacity: 0, height: 0, y: -10 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: -10 }} className="overflow-hidden">
+                      <h3 className={`text-[10px] font-bold uppercase tracking-wider mt-4 mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{tipoEnvio === 'delivery' ? '4. ¿A dónde te lo llevamos?' : '4. ¿A qué ciudad/agencia enviamos?'}</h3>
+                      <div className={`p-4 sm:p-5 rounded-2xl border space-y-4 ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
+                        <button onClick={obtenerUbicacion} disabled={obteniendoUbicacion} className={`w-full h-11 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border-2 ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'} ${obteniendoUbicacion ? 'opacity-70 cursor-not-allowed' : ''}`}>
+                          {obteniendoUbicacion ? <>⏳ Buscando ubicación...</> : <>📍 Obtener mi ubicación actual</>}
+                        </button>
+                        <div className="flex items-center gap-3"><hr className={`flex-1 ${isDark ? 'border-slate-700' : 'border-slate-200'}`} /><span className={`text-[10px] font-medium uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>o ingresala manual</span><hr className={`flex-1 ${isDark ? 'border-slate-700' : 'border-slate-200'}`} /></div>
+                        <div><label className={estForm.label}>Link de Maps (Opcional si usaste el botón)</label><input type="url" placeholder="Ej: https://www.google.com/maps?q=..." className={`${estForm.input} h-11 ${RADIO_GENERAL}`} value={datosCliente.linkMaps} onChange={e => setDatosCliente({...datosCliente, linkMaps: e.target.value})} /></div>
+                        <div><label className={estForm.label}>Dirección escrita o referencias</label><textarea placeholder={tipoEnvio === 'delivery' ? "Ej: Calle falsa 123, casa portón negro..." : "Ej: Enviar a la sucursal de Asunción Centro..."} className={`${estForm.input} py-3 h-20 resize-none ${RADIO_GENERAL}`} value={datosCliente.direccion} onChange={e => setDatosCliente({...datosCliente, direccion: e.target.value})} /></div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div>
+                  <h3 className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{(tipoEnvio === 'delivery' || tipoEnvio === 'encomienda') ? '5. ' : '4. '}Notas adicionales (Opcional)</h3>
+                  <div className={`p-4 sm:p-5 rounded-2xl border space-y-4 ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
+                    <div><textarea placeholder="Ej: Es para un regalo, por favor llamarme al llegar, etc..." className={`${estForm.input} py-3 h-20 resize-none ${RADIO_GENERAL}`} value={datosCliente.notas} onChange={e => setDatosCliente({...datosCliente, notas: e.target.value})} /></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`p-4 sm:p-5 border-t shrink-0 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <button onClick={enviarPedidoWhatsApp} className={`w-full h-12 sm:h-14 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold uppercase tracking-wider transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 bg-emerald-500 text-white hover:bg-emerald-600 ${isDark ? 'shadow-none' : ''}`}>
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86s.274.072.376-.043c.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.1.824zm-3.423-14.416c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm.029 18.88c-1.161 0-2.305-.292-3.318-.844l-3.677.964.984-3.595c-.607-1.052-.927-2.246-.926-3.468.001-3.825 3.113-6.937 6.937-6.937 3.825.001 6.938 3.113 6.939 6.938-.001 3.825-3.114 6.938-6.939 6.942z"/></svg>
+                  Confirmar y enviar por WhatsApp
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
