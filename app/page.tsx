@@ -1007,18 +1007,21 @@ function CatalogoContent() {
     if (textoColor !== undefined) localStorage.setItem('color_texto_anuncio', textoColor);
   };
 
-  const cargarResenas = () => {
-    const data = localStorage.getItem('easy_resenas');
-    if (data) { try { setResenas(JSON.parse(data)); } catch {} }
+  const cargarResenas = async () => {
+    const { data, error } = await supabase.from('resenas').select('*').order('id', { ascending: false });
+    if (!error && data) setResenas(data);
   };
-  const guardarResena = (nueva: Resena) => {
-    setResenas(prev => { const nuevas = [...prev, nueva]; localStorage.setItem('easy_resenas', JSON.stringify(nuevas)); return nuevas; });
+  const guardarResena = async (nueva: any) => {
+    const { error } = await supabase.from('resenas').insert([nueva]);
+    if (!error) cargarResenas();
   };
-  const eliminarResena = (id: string) => {
-    setResenas(prev => { const nuevas = prev.filter(r => r.id !== id); localStorage.setItem('easy_resenas', JSON.stringify(nuevas)); return nuevas; });
+  const eliminarResena = async (id: string) => {
+    const { error } = await supabase.from('resenas').delete().eq('id', id);
+    if (!error) cargarResenas();
   };
-  const editarResena = (actualizada: Resena) => {
-    setResenas(prev => { const nuevas = prev.map(r => r.id === actualizada.id ? actualizada : r); localStorage.setItem('easy_resenas', JSON.stringify(nuevas)); return nuevas; });
+  const editarResena = async (actualizada: Resena) => {
+    const { error } = await supabase.from('resenas').update(actualizada).eq('id', actualizada.id);
+    if (!error) cargarResenas();
   };
 
   const cargarCupones = () => {
