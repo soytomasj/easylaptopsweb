@@ -148,9 +148,13 @@ interface Cupon { id: string; codigo: string; tipo: 'fijo' | 'porcentaje'; valor
 // ========================================================
 
 const parsearTextoAnuncio = (texto: string): React.ReactNode => {
-  let html = texto || '';
-  html = html.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-  html = html.replace(/_(.*?)_/g, '<i>$1</i>');
+  if (!texto) return '';
+  // Si el texto ya contiene etiquetas HTML (viene del editor), no aplicamos markdown simple
+  let html = texto;
+  if (!html.includes('<')) {
+    html = html.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+    html = html.replace(/_(.*?)_/g, '<i>$1</i>');
+  }
   return (
     <span 
       dangerouslySetInnerHTML={{ __html: html }} 
@@ -386,7 +390,7 @@ const FormResena = ({ isDark, onClose, onGuardar, onEditar, resenaEnEdicion, est
     if (editando) {
       onEditar({ ...resenaEnEdicion, nombre: nombre.trim(), foto, estrellas, descripcion: descripcion.trim() });
     } else {
-      onGuardar({ id: Date.now().toString(), nombre: nombre.trim(), foto, estrellas, descripcion: descripcion.trim() });
+      onGuardar({ nombre: nombre.trim(), foto, estrellas, descripcion: descripcion.trim() });
     }
     onClose();
   };
@@ -540,7 +544,11 @@ const GestorPromocionesAdmin = ({ isDark, setMostrandoGestorPromos, textoAnuncio
             )}
             {/* Save */}
             <div className="px-3 pb-3">
-              <button onClick={() => { setTextoAnuncio(textoAnuncioDraft); setColorFondoAnuncio(colorFondo); setColorTextoAnuncio(colorTexto); guardarAnuncioDB(textoAnuncioDraft, colorFondo, colorTexto); setMostrandoGestorPromos(false); }} className={`w-full h-10 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-600 text-white hover:bg-violet-700'}`}>Guardar Anuncio</button>
+              <button onClick={async () => { 
+                await guardarAnuncioDB(textoAnuncioDraft, colorFondo, colorTexto); 
+                setTextoAnuncio(textoAnuncioDraft);
+                setMostrandoGestorPromos(false); 
+              }} className={`w-full h-10 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center ${isDark ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-600 text-white hover:bg-violet-700'}`}>Guardar Anuncio</button>
             </div>
           </div>
         </div>
@@ -794,7 +802,26 @@ const SPECS_ICONS = [
 ];
 
 const FiltroEspecsBoton = ({ filtros, setFiltros, opciones, mostrandoFiltros, setMostrandoFiltros, alAbrir, isDark }: { filtros: Filtros; setFiltros: (f: Filtros) => void; opciones: Record<string, string[]>; mostrandoFiltros: boolean; setMostrandoFiltros: (v: boolean) => void; alAbrir: () => void; isDark: boolean }) => {
+  const [draftFiltros, setDraftFiltros] = useState<Filtros>({ ...filtros });
   const filtrosActivos = (filtros.ram.length + filtros.pantalla.length + filtros.disco.length + filtros.procesador.length) + (filtros.precioMin || filtros.precioMax ? 1 : 0);
+  
+  // Sincronizar draft cuando se abre el modal
+  useEffect(() => {
+    if (mostrandoFiltros) setDraftFiltros({ ...filtros });
+  }, [mostrandoFiltros, filtros]);
+
+  const aplicar = () => {
+    setFiltros(draftFiltros);
+    setMostrandoFiltros(false);
+  };
+
+  const limpiar = () => {
+    const vacio = { ...FILTROS_VACIO };
+    setDraftFiltros(vacio);
+    setFiltros(vacio);
+    setMostrandoFiltros(false);
+  };
+
   return (
     <div className="relative">
       <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={() => { setMostrandoFiltros(!mostrandoFiltros); alAbrir(); }}
@@ -809,13 +836,13 @@ const FiltroEspecsBoton = ({ filtros, setFiltros, opciones, mostrandoFiltros, se
             <div className={`flex items-center justify-between px-3 py-2.5 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
               <p className={`text-[8px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Filtrar por</p>
               {filtrosActivos > 0 && (
-                <button onClick={() => setFiltros({ ...FILTROS_VACIO })} className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider transition-colors ${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'}`}>
+                <button onClick={limpiar} className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider transition-colors ${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'}`}>
                   <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   Limpiar ({filtrosActivos})
                 </button>
               )}
             </div>
-            <div className="flex flex-col max-h-80 overflow-y-auto">
+            <div className="flex flex-col max-h-80 overflow-y-auto pb-2">
               {SPECS_ICONS.map(({ key, label, icon }, idx) => {
                 const opcs = opciones[key] || [];
                 if (!opcs.length) return null;
@@ -827,12 +854,12 @@ const FiltroEspecsBoton = ({ filtros, setFiltros, opciones, mostrandoFiltros, se
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {opcs.map((op: string) => {
-                        const lista = (filtros[key] as string[]) || [];
+                        const lista = (draftFiltros[key] as string[]) || [];
                         const activo = lista.includes(op);
                         return (
                           <button key={op} onClick={() => {
                             const nuevaLista = activo ? lista.filter(x => x !== op) : [...lista, op];
-                            setFiltros({ ...filtros, [key]: nuevaLista });
+                            setDraftFiltros({ ...draftFiltros, [key]: nuevaLista });
                           }}
                             className={`px-2.5 py-1 text-[10px] font-semibold rounded-xl border transition-all leading-none ${activo ? 'bg-violet-600 text-white border-violet-600' : isDark ? 'bg-slate-800 text-slate-400 border-slate-700 hover:border-violet-500/60 hover:text-violet-400' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-violet-300 hover:text-violet-600'}`}>
                             {op}
@@ -849,10 +876,13 @@ const FiltroEspecsBoton = ({ filtros, setFiltros, opciones, mostrandoFiltros, se
                   <span className={`text-[8px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Precio (Gs.)</span>
                 </div>
                 <div className="flex gap-2">
-                  <input type="text" inputMode="numeric" placeholder="Mín" value={filtros.precioMin ? Number(filtros.precioMin).toLocaleString('es-PY') : ''} onChange={e => setFiltros({ ...filtros, precioMin: e.target.value.replace(/\D/g, '') })} className={`w-full h-8 px-2 text-[10px] font-medium rounded-lg border outline-none transition-colors ${isDark ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-600 focus:border-violet-500' : 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400 focus:border-violet-400'}`} />
-                  <input type="text" inputMode="numeric" placeholder="Máx" value={filtros.precioMax ? Number(filtros.precioMax).toLocaleString('es-PY') : ''} onChange={e => setFiltros({ ...filtros, precioMax: e.target.value.replace(/\D/g, '') })} className={`w-full h-8 px-2 text-[10px] font-medium rounded-lg border outline-none transition-colors ${isDark ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-600 focus:border-violet-500' : 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400 focus:border-violet-400'}`} />
+                  <input type="text" inputMode="numeric" placeholder="Mín" value={draftFiltros.precioMin ? Number(draftFiltros.precioMin).toLocaleString('es-PY') : ''} onChange={e => setDraftFiltros({ ...draftFiltros, precioMin: e.target.value.replace(/\D/g, '') })} className={`w-full h-8 px-2 text-[10px] font-medium rounded-lg border outline-none transition-colors ${isDark ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-600 focus:border-violet-500' : 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400 focus:border-violet-400'}`} />
+                  <input type="text" inputMode="numeric" placeholder="Máx" value={draftFiltros.precioMax ? Number(draftFiltros.precioMax).toLocaleString('es-PY') : ''} onChange={e => setDraftFiltros({ ...draftFiltros, precioMax: e.target.value.replace(/\D/g, '') })} className={`w-full h-8 px-2 text-[10px] font-medium rounded-lg border outline-none transition-colors ${isDark ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-600 focus:border-violet-500' : 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400 focus:border-violet-400'}`} />
                 </div>
               </div>
+            </div>
+            <div className={`p-3 border-t ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-100 bg-slate-50/50'}`}>
+              <button onClick={aplicar} className="w-full h-9 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl shadow-md hover:bg-violet-700 transition-all">Aplicar Filtros</button>
             </div>
           </motion.div>
         )}
@@ -993,35 +1023,61 @@ function CatalogoContent() {
     if (!error && data && data.length > 0) setBanners(data);
   };
 
-  const cargarAnuncioDB = () => {
-    const guardado = localStorage.getItem('texto_anuncio_tienda');
-    if (guardado !== null) { setTextoAnuncio(guardado); setTextoAnuncioDraft(guardado); }
-    const savedFondo = localStorage.getItem('color_fondo_anuncio');
-    const savedTexto = localStorage.getItem('color_texto_anuncio');
-    if (savedFondo) setColorFondoAnuncio(savedFondo);
-    if (savedTexto) setColorTextoAnuncio(savedTexto);
+  const cargarAnuncioDB = async () => {
+    const { data } = await supabase.from('configuracion').select('*').eq('clave', 'anuncio_superior').single();
+    if (data && data.valor) {
+      const v = data.valor;
+      setTextoAnuncio(v.texto || ''); 
+      setTextoAnuncioDraft(v.texto || '');
+      if (v.colorFondo) setColorFondoAnuncio(v.colorFondo);
+      if (v.colorTexto) setColorTextoAnuncio(v.colorTexto);
+    }
   };
-  const guardarAnuncioDB = (texto: string, fondo?: string, textoColor?: string) => {
-    localStorage.setItem('texto_anuncio_tienda', texto);
-    if (fondo !== undefined) localStorage.setItem('color_fondo_anuncio', fondo);
-    if (textoColor !== undefined) localStorage.setItem('color_texto_anuncio', textoColor);
+
+  const guardarAnuncioDB = async (texto: string, fondo?: string, textoColor?: string) => {
+    const payload = { 
+      clave: 'anuncio_superior', 
+      valor: { 
+        texto, 
+        colorFondo: fondo || colorFondoAnuncio, 
+        colorTexto: textoColor || colorTextoAnuncio 
+      } 
+    };
+    await supabase.from('configuracion').upsert(payload);
+    setTextoAnuncio(texto);
   };
 
   const cargarResenas = async () => {
     const { data, error } = await supabase.from('resenas').select('*').order('id', { ascending: false });
-    if (!error && data) setResenas(data);
+    if (error) {
+      console.error("Error cargando reseñas:", error);
+      return;
+    }
+    if (data) setResenas(data);
   };
   const guardarResena = async (nueva: any) => {
     const { error } = await supabase.from('resenas').insert([nueva]);
-    if (!error) cargarResenas();
+    if (error) {
+      alert("Error al guardar reseña: " + error.message);
+    } else {
+      cargarResenas();
+    }
   };
   const eliminarResena = async (id: string) => {
     const { error } = await supabase.from('resenas').delete().eq('id', id);
-    if (!error) cargarResenas();
+    if (error) {
+      alert("Error al eliminar reseña: " + error.message);
+    } else {
+      cargarResenas();
+    }
   };
   const editarResena = async (actualizada: Resena) => {
     const { error } = await supabase.from('resenas').update(actualizada).eq('id', actualizada.id);
-    if (!error) cargarResenas();
+    if (error) {
+      alert("Error al editar reseña: " + error.message);
+    } else {
+      cargarResenas();
+    }
   };
 
   const cargarCupones = () => {
@@ -1490,7 +1546,7 @@ function CatalogoContent() {
       {/* ========================================================
           ⭐ SECCIÓN DE RESEÑAS
       ======================================================== */}
-      {!mostrandoFormulario && resenas.length > 0 && (
+      {!mostrandoFormulario && (resenas.length > 0 || isAdmin) && (
         <section className={`w-full mt-12 sm:mt-20 pt-12 sm:pt-16 pb-8 sm:pb-12 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'} overflow-hidden`}>
           <div className="max-w-7xl mx-auto px-4 mb-6">
             <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>Lo que dicen nuestros clientes</p>
