@@ -43,13 +43,19 @@ export default function RootLayout({
             __html: `
               (function() {
                 var text = "EasyLaptops";
-                
-                var mode = "typing"; // typing, blinking, deleting
+                var mode = "typing"; 
                 var charIdx = 0;
                 var blinkCount = 0;
                 var timer;
 
                 function loop() {
+                  if (document.hidden) {
+                    // Si el usuario no está viendo la pestaña, la dejamos quieta 
+                    // para evitar que el navegador la ralentice y se vea lagueada.
+                    document.title = text;
+                    return;
+                  }
+
                   if (mode === "typing") {
                     document.title = text.substring(0, charIdx) + " |";
                     charIdx++;
@@ -58,18 +64,16 @@ export default function RootLayout({
                       blinkCount = 0;
                       timer = setTimeout(loop, 500); 
                     } else {
-                      timer = setTimeout(loop, 150); // Velocidad de tipeo
+                      timer = setTimeout(loop, 150);
                     }
                   } else if (mode === "blinking") {
                     if (blinkCount % 2 === 0) {
                       document.title = text + " |";
                     } else {
-                      // Usamos un caracter invisible (Left-to-Right Mark) para que el navegador no recorte el espacio 
-                      // final y el texto se quede 100% quieto en el tab.
                       document.title = text + " \\u200E";
                     }
                     blinkCount++;
-                    if (blinkCount >= 20) { // 20 parpadeos a 500ms = 10 segundos
+                    if (blinkCount >= 20) { 
                       mode = "deleting";
                     }
                     timer = setTimeout(loop, 500);
@@ -79,12 +83,23 @@ export default function RootLayout({
                     if (charIdx < 0) {
                       mode = "typing";
                       charIdx = 0;
-                      timer = setTimeout(loop, 1000); // Pausa breve antes de reescribir
+                      timer = setTimeout(loop, 1000);
                     } else {
-                      timer = setTimeout(loop, 50); // Velocidad de borrado rápido
+                      timer = setTimeout(loop, 50);
                     }
                   }
                 }
+
+                // Escuchar cuando el usuario vuelve o se va de la pestaña
+                document.addEventListener("visibilitychange", function() {
+                  if (!document.hidden) {
+                    // Cuando vuelve, reiniciamos el loop
+                    clearTimeout(timer);
+                    mode = "typing";
+                    charIdx = 0;
+                    loop();
+                  }
+                });
 
                 timer = setTimeout(loop, 500);
               })();

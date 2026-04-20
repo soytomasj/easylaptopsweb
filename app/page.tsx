@@ -80,6 +80,21 @@ const comprimirImagen = (file: File, maxWidth: number = 1200, quality: number = 
 
 const formatearPrecio = (precio: number) => `${new Intl.NumberFormat('es-PY', { maximumFractionDigits: 0 }).format(precio)}gs`;
 
+const getLaptopsVendidas = () => {
+  const BASE_VENDIDAS = 534;
+  const FECHA_REFERENCIA = new Date('2026-04-01');
+  const hoy = new Date();
+  
+  // Calculamos meses de diferencia
+  const meses = (hoy.getFullYear() - FECHA_REFERENCIA.getFullYear()) * 12 + (hoy.getMonth() - FECHA_REFERENCIA.getMonth());
+  
+  // Opcional: sumar un proporcional por los días del mes actual para que no sea un salto brusco el día 1
+  const diasMesActual = hoy.getDate();
+  const extraPorDias = Math.floor((diasMesActual / 30) * 25);
+  
+  return BASE_VENDIDAS + (meses * 25) + (meses >= 0 ? extraPorDias : 0);
+};
+
 const normalizarStorage = (v: string): string => {
   if (!v) return v;
   const gb = v.match(/(\d+(?:\.\d+)?)\s*[Gg][Bb]/);
@@ -339,28 +354,45 @@ const CarruselResenas = ({ resenas, isDark, isAdmin, onEliminar, onEditar }: any
   const duplicadas = resenas.length < 4 ? [...resenas, ...resenas, ...resenas, ...resenas] : [...resenas, ...resenas];
   const duracion = Math.max(20, duplicadas.length * 6);
   return (
-    <div className="overflow-hidden w-full relative">
-      <div className="flex gap-4" style={{ animation: `marquee-resenas ${duracion}s linear infinite`, width: 'max-content' }}>
+    <div className="overflow-hidden w-full relative -my-8 py-8">
+      <div className="flex gap-4 py-4" style={{ animation: `marquee-resenas ${duracion}s linear infinite`, width: 'max-content' }}>
         {duplicadas.map((r: Resena, i: number) => (
-          <div key={`${r.id}-${i}`} className={`relative shrink-0 w-64 sm:w-72 p-5 rounded-2xl border flex flex-col gap-3 ${isDark ? 'bg-slate-800/70 border-slate-700/60' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <div key={`${r.id}-${i}`} className={`relative shrink-0 w-64 sm:w-80 p-6 rounded-[2rem] border transition-all duration-500 hover:scale-[1.02] flex flex-col gap-4 ${isDark ? 'bg-slate-900/40 border-white/5 backdrop-blur-md shadow-2xl shadow-black/20' : 'bg-white border-slate-200 shadow-xl shadow-slate-200/50'}`}>
+            {/* Decoración: Comilla (Solo Desktop) */}
+            <div className="hidden sm:block absolute top-6 right-8 opacity-[0.05] pointer-events-none z-0">
+              <svg viewBox="0 0 24 24" fill="currentColor" className={`w-10 h-10 ${isDark ? 'text-white' : 'text-slate-900'}`}><path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.987z"/></svg>
+            </div>
+
             {isAdmin && (
-              <div className="absolute top-3 right-3 flex gap-1">
-                <button onClick={() => onEditar(r)} className={`w-6 h-6 flex items-center justify-center rounded-full transition-colors ${isDark ? 'bg-slate-700 text-slate-400 hover:bg-violet-600 hover:text-white' : 'bg-violet-500/10 text-violet-500 hover:bg-violet-500 hover:text-white'}`} title="Editar reseña"><svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
-                <button onClick={() => onEliminar(r.id)} className="w-6 h-6 flex items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors text-[10px] font-bold" title="Eliminar reseña">✕</button>
+              <div className="absolute top-4 right-4 flex gap-1.5 z-20">
+                <button onClick={() => onEditar(r)} className={`w-7 h-7 flex items-center justify-center rounded-full transition-all ${isDark ? 'bg-slate-800/80 text-slate-400 hover:bg-violet-600 hover:text-white' : 'bg-violet-500/10 text-violet-500 hover:bg-violet-500 hover:text-white'}`} title="Editar reseña"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
+                <button onClick={() => onEliminar(r.id)} className="w-7 h-7 flex items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all text-[11px] font-bold" title="Eliminar reseña">✕</button>
               </div>
             )}
-            <div className="flex items-center gap-3">
-              <img src={r.foto} alt={r.nombre} className="w-11 h-11 rounded-full object-cover border-2 border-violet-400/30 shrink-0" onError={(e: any) => { e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z'/%3E%3C/svg%3E"; }} />
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <span className={`text-sm font-bold leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.nombre}</span>
-                <div className="flex gap-0.5">
-                  {[1,2,3,4,5].map(s => (
-                    <svg key={s} viewBox="0 0 24 24" width="11" height="11" fill={s <= r.estrellas ? '#f59e0b' : 'none'} stroke={s <= r.estrellas ? '#f59e0b' : (isDark ? '#475569' : '#cbd5e1')} strokeWidth="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                  ))}
+
+            <div className="flex items-center gap-4 relative z-10">
+              <div className="relative">
+                <img src={r.foto} alt={r.nombre} className="w-12 h-12 rounded-2xl object-cover border-2 border-violet-500/20 shadow-lg shrink-0" onError={(e: any) => { e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z'/%3E%3C/svg%3E"; }} />
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-[#0095F6] rounded-full border-2 border-[#020617] flex items-center justify-center shadow-lg">
+                  <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className={`text-sm font-bold tracking-tight leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.nombre}</span>
+                <div className="flex items-center gap-1 mt-1">
+                  <div className="flex gap-0.5">
+                    {[1,2,3,4,5].map(s => (
+                      <svg key={s} viewBox="0 0 24 24" width="10" height="10" fill={s <= r.estrellas ? '#f59e0b' : 'none'} stroke={s <= r.estrellas ? '#f59e0b' : (isDark ? '#475569' : '#cbd5e1')} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    ))}
+                  </div>
+                  <span className={`text-[9px] font-bold uppercase tracking-wider opacity-40 ml-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>Verificado</span>
                 </div>
               </div>
             </div>
-            <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`} style={{ display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.descripcion}</p>
+
+            <p className={`text-[12px] sm:text-[13px] leading-relaxed font-medium italic ${isDark ? 'text-slate-300' : 'text-slate-600'}`} style={{ display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              "{r.descripcion}"
+            </p>
           </div>
         ))}
       </div>
@@ -701,10 +733,30 @@ const VistaRapidaPreview = ({ producto, isDark, idxImagenModal, setIdxImagenModa
                 const resto = restoOriginal;
 
                 return (
-                  <div key={i} className={`flex flex-col items-center justify-center flex-1 min-w-0 text-center ${i > 0 ? `border-l ${isDark ? 'border-slate-800' : 'border-slate-200'}` : ''}`}>
-                    <img src={s.i} alt={s.l} className={`w-5 h-5 sm:w-6 sm:h-6 mb-1.5 object-contain shrink-0 ${isDark ? 'invert opacity-70' : 'opacity-70'}`} />
-                    <span className={`text-[7px] sm:text-[8px] font-medium uppercase tracking-wider mb-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{s.l}</span>
-                    <div className="relative h-4 overflow-hidden w-full flex items-center justify-center">
+                  <div key={i} className={`flex flex-col items-center justify-center flex-1 min-w-0 text-center relative ${i > 0 ? `border-l ${isDark ? 'border-slate-800' : 'border-slate-200'}` : ''}`}>
+                    <motion.div
+                      animate={{ 
+                        scale: isSSD && upgraded ? [1, 1.2, 1] : 1,
+                        filter: isSSD && upgraded ? 'drop-shadow(0 0 8px rgba(139, 92, 246, 0.4))' : 'drop-shadow(0 0 0px rgba(0,0,0,0))'
+                      }}
+                      transition={{ duration: 0.4 }}
+                      className="relative"
+                    >
+                      <motion.img 
+                        src={s.i} 
+                        alt={s.l} 
+                        animate={{
+                          filter: isSSD && upgraded 
+                            ? (isDark ? 'invert(65%) sepia(90%) saturate(1200%) hue-rotate(220deg)' : 'invert(35%) sepia(95%) saturate(2000%) hue-rotate(245deg)')
+                            : (isDark ? 'invert(100%)' : 'invert(0%)'),
+                          opacity: isSSD && upgraded ? 1 : 0.7
+                        }}
+                        transition={{ duration: 0.3 }}
+                        className="w-6 h-6 sm:w-8 sm:h-8 mb-1 object-contain shrink-0" 
+                      />
+                    </motion.div>
+                    <span className={`text-[6px] sm:text-[7px] font-bold uppercase tracking-wider leading-none ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{s.l}</span>
+                    <div className="relative h-5 overflow-hidden w-full flex items-center justify-center">
                       <AnimatePresence mode="popLayout" initial={false}>
                         <motion.span 
                           key={numero}
@@ -712,12 +764,12 @@ const VistaRapidaPreview = ({ producto, isDark, idxImagenModal, setIdxImagenModa
                           animate={{ y: 0, opacity: 1 }}
                           exit={{ y: -15, opacity: 0 }}
                           transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                          className={`text-[9px] sm:text-[11px] font-semibold leading-none ${isDark ? 'text-slate-200' : 'text-slate-800'}`}
+                          className={`text-[10px] sm:text-[12px] font-bold leading-none ${isDark ? 'text-slate-200' : 'text-slate-800'}`}
                         >
                           {numero}
                         </motion.span>
                       </AnimatePresence>
-                      {resto && <span className={`text-[9px] sm:text-[11px] font-semibold leading-none ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{resto}</span>}
+                      {resto && <span className={`text-[10px] sm:text-[12px] font-bold leading-none ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{resto}</span>}
                     </div>
                   </div>
                 );
@@ -895,7 +947,7 @@ function CatalogoContent() {
   const searchParams = useSearchParams();
   const laptopIdParam = searchParams.get('laptop');
 
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [estaCargandoDB, setEstaCargandoDB] = useState(true);
@@ -904,13 +956,14 @@ function CatalogoContent() {
   
   const [banners, setBanners] = useState<any[]>(MOCK_BANNERS_INICIALES);
   const [estaGuardandoBanners, setEstaGuardandoBanners] = useState(false);
-  const [textoAnuncio, setTextoAnuncio] = useState('🔥 10% DE DESCUENTO PAGANDO CON TRANSFERENCIA ESTE FIN DE SEMANA 🔥');
-  const [textoAnuncioDraft, setTextoAnuncioDraft] = useState('🔥 10% DE DESCUENTO PAGANDO CON TRANSFERENCIA ESTE FIN DE SEMANA 🔥');
-  const [colorFondoAnuncio, setColorFondoAnuncio] = useState('');
-  const [colorTextoAnuncio, setColorTextoAnuncio] = useState('');
-  
-  const [menuFiltroAbierto, setMenuFiltroAbierto] = useState(false);
-  const [ordenamiento, setOrdenamiento] = useState<'NUEVOS' | 'PRECIO_MENOR' | 'PRECIO_MAYOR'>('NUEVOS');
+
+  // Inicialización inteligente para evitar parpadeo de color
+  const [textoAnuncio, setTextoAnuncio] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('texto_anuncio_tienda') || '🔥 OFERTAS ACTIVAS 🔥' : '🔥 OFERTAS ACTIVAS 🔥'));
+  const [textoAnuncioDraft, setTextoAnuncioDraft] = useState(textoAnuncio);
+  const [colorFondoAnuncio, setColorFondoAnuncio] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('color_fondo_anuncio') || '#7c3aed' : '#7c3aed'));
+  const [colorTextoAnuncio, setColorTextoAnuncio] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('color_texto_anuncio') || '#ffffff' : '#ffffff'));
+
+  const [menuFiltroAbierto, setMenuFiltroAbierto] = useState(false);  const [ordenamiento, setOrdenamiento] = useState<'NUEVOS' | 'PRECIO_MENOR' | 'PRECIO_MAYOR'>('NUEVOS');
   const [menuFiltroPedidoAbierto, setMenuFiltroPedidoAbierto] = useState(false);
   const [ordenamientoPedido, setOrdenamientoPedido] = useState<'RECIENTES' | 'PRECIO_MENOR' | 'PRECIO_MAYOR'>('RECIENTES');
   const [filtrosDisponibles, setFiltrosDisponibles] = useState<Filtros>({ ...FILTROS_VACIO });
@@ -964,8 +1017,8 @@ function CatalogoContent() {
 
   useEffect(() => {
     setIsMounted(true);
-    const temaGuardado = localStorage.getItem('tema_tienda');
-    if (temaGuardado === 'dark' || (!temaGuardado && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) setIsDark(true);
+    // Forzamos modo oscuro siempre
+    setIsDark(true);
 
     const verificarSesionYCargarDatos = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1031,6 +1084,11 @@ function CatalogoContent() {
       setTextoAnuncioDraft(v.texto || '');
       if (v.colorFondo) setColorFondoAnuncio(v.colorFondo);
       if (v.colorTexto) setColorTextoAnuncio(v.colorTexto);
+      
+      // Guardamos en cache local para el próximo reload
+      localStorage.setItem('texto_anuncio_tienda', v.texto || '');
+      if (v.colorFondo) localStorage.setItem('color_fondo_anuncio', v.colorFondo);
+      if (v.colorTexto) localStorage.setItem('color_texto_anuncio', v.colorTexto);
     }
   };
 
@@ -1043,7 +1101,15 @@ function CatalogoContent() {
         colorTexto: textoColor || colorTextoAnuncio 
       } 
     };
+    
+    // Guardamos en Supabase
     await supabase.from('configuracion').upsert(payload);
+    
+    // Actualizamos cache local
+    localStorage.setItem('texto_anuncio_tienda', texto);
+    localStorage.setItem('color_fondo_anuncio', fondo || colorFondoAnuncio);
+    localStorage.setItem('color_texto_anuncio', textoColor || colorTextoAnuncio);
+    
     setTextoAnuncio(texto);
   };
 
@@ -1357,13 +1423,24 @@ function CatalogoContent() {
 
       <nav className="p-4 lg:p-6 flex justify-between items-center max-w-7xl mx-auto w-full relative z-40">
         <img src={isDark ? "https://i.imgur.com/2lSkLeX.png" : "https://i.imgur.com/jNPKE3H.png"} alt="Easy Laptops Logo" className="h-16 sm:h-20 lg:h-24 w-auto object-contain transition-all duration-300" />
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button onClick={() => setCarritoAbierto(true)} className={`relative flex items-center justify-center w-10 h-10 rounded-full border transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:text-violet-600 hover:border-violet-300 shadow-sm'}`} title="Ver Carrito">
+        <div className="flex items-center gap-2 sm:gap-3 pt-1.5">
+          <div className="flex items-center gap-2.5 sm:gap-4 mr-1 sm:mr-2 border-r border-slate-800 pr-3 sm:pr-4">
+            {/* Instagram */}
+            <button className="text-slate-500 hover:text-[#E1306C] transition-all duration-300 transform hover:scale-110" title="Instagram">
+              <svg viewBox="0 0 24 24" width="16" height="16" className="sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+            </button>
+            {/* TikTok */}
+            <button className="text-slate-500 hover:text-[#ff0050] transition-all duration-300 transform hover:scale-110" title="TikTok">
+              <svg viewBox="0 0 24 24" width="16" height="16" className="sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"></path></svg>
+            </button>
+            {/* WhatsApp */}
+            <button className="text-slate-500 hover:text-[#25D366] transition-all duration-300 transform hover:scale-110" title="WhatsApp">
+              <svg viewBox="0 0 24 24" width="16" height="16" className="sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-14h.1a8.38 8.38 0 0 1 3.8.9L21 3z"></path></svg>
+            </button>
+          </div>
+          <button onClick={() => setCarritoAbierto(true)} className={`relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full border transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:text-violet-600 hover:border-violet-300 shadow-sm'}`} title="Ver Carrito">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
             {carrito.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-violet-600 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-[#F4F6F8] dark:border-slate-950">{carrito.reduce((acc, item) => acc + item.cantidad, 0)}</span>}
-          </button>
-          <button onClick={toggleTema} className={`flex items-center justify-center w-10 h-10 rounded-full border transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-yellow-400 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-400 hover:text-violet-500 hover:border-violet-300 shadow-sm'}`}>
-            {isDark ? <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> : <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
           </button>
           {isAdmin && <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setMostrandoFormResena(true)} className={`text-[10px] font-bold uppercase tracking-wider px-3 py-2 rounded-xl border-2 transition-all ${isDark ? 'border-slate-700 text-slate-400 hover:border-violet-500 hover:text-violet-400' : 'border-slate-200 text-slate-500 hover:border-violet-400 hover:text-violet-600'}`}>Reseñas</motion.button>}
           {isAdmin && <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { resetearFormulario(); setMostrandoFormulario(true); }} className={ESTETICA_CONTROLES(isDark).botonPrincipal}>+ Publicar</motion.button>}
@@ -1550,21 +1627,26 @@ function CatalogoContent() {
         <section className={`w-full mt-12 sm:mt-20 pt-12 sm:pt-16 pb-8 sm:pb-12 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'} overflow-hidden`}>
           <div className="max-w-7xl mx-auto px-4 mb-6">
             <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>Lo que dicen nuestros clientes</p>
-            <div className="flex items-center gap-2.5">
-              <h2 className={`text-2xl sm:text-3xl lg:text-4xl font-display font-bold tracking-tight ${isDark ? 'text-white' : 'text-[#1E2046]'}`}>Reseñas verificadas</h2>
-              <svg viewBox="0 0 24 24" width="21" height="21" fill="none" className="shrink-0 mt-0.5">
-                <defs>
-                  <linearGradient id="ig-verified" x1="0%" y1="100%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#f09433"/>
-                    <stop offset="30%" stopColor="#e6683c"/>
-                    <stop offset="55%" stopColor="#dc2743"/>
-                    <stop offset="78%" stopColor="#cc2366"/>
-                    <stop offset="100%" stopColor="#bc1888"/>
-                  </linearGradient>
-                </defs>
-                <polygon points="12,1 13.94,4.75 17.5,2.47 17.3,6.7 21.53,6.5 19.24,10.06 23,12 19.24,13.94 21.53,17.5 17.3,17.3 17.5,21.53 13.94,19.24 12,23 10.06,19.24 6.5,21.53 6.7,17.3 2.47,17.5 4.75,13.94 1,12 4.75,10.06 2.47,6.5 6.7,6.7 6.5,2.47 10.06,4.75" fill="url(#ig-verified)"/>
-                <path d="M8 12.5l2.8 2.8 5.2-5.8" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+            <div className="flex items-center flex-wrap gap-3">
+              <div className="flex items-center gap-2.5">
+                <h2 className={`text-2xl sm:text-3xl lg:text-4xl font-display font-bold tracking-tight ${isDark ? 'text-white' : 'text-[#1E2046]'}`}>Reseñas verificadas</h2>
+                <svg viewBox="0 0 24 24" width="21" height="21" fill="none" className="shrink-0 mt-0.5">
+                  <defs>
+                    <linearGradient id="ig-verified" x1="0%" x2="100%" y1="100%" y2="0%">
+                      <stop offset="0%" stopColor="#f09433"/>
+                      <stop offset="30%" stopColor="#e6683c"/>
+                      <stop offset="55%" stopColor="#dc2743"/>
+                      <stop offset="78%" stopColor="#cc2366"/>
+                      <stop offset="100%" stopColor="#bc1888"/>
+                    </linearGradient>
+                  </defs>
+                  <polygon points="12,1 13.94,4.75 17.5,2.47 17.3,6.7 21.53,6.5 19.24,10.06 23,12 19.24,13.94 21.53,17.5 17.3,17.3 17.5,21.53 13.94,19.24 12,23 10.06,19.24 6.5,21.53 6.7,17.3 2.47,17.5 4.75,13.94 1,12 4.75,10.06 2.47,6.5 6.7,6.7 6.5,2.47 10.06,4.75" fill="url(#ig-verified)"/>
+                  <path d="M8 12.5l2.8 2.8 5.2-5.8" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div className={`px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider border animate-pulse ${isDark ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' : 'bg-violet-50 text-violet-600 border-violet-100'}`}>
+                🚀 +{getLaptopsVendidas()} Laptops entregadas
+              </div>
             </div>
           </div>
           <div className="marquee-pause">
@@ -1576,14 +1658,37 @@ function CatalogoContent() {
       {/* ========================================================
           🚀 FOOTER (Términos, Privacidad, Contacto)
       ======================================================== */}
-      <footer className={`mt-auto py-10 sm:py-12 px-4 border-t ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-50/50'} w-full relative z-40`}>
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
-          <div className="flex flex-col items-center md:items-start gap-2">
-            <img src={isDark ? "https://i.imgur.com/2lSkLeX.png" : "https://i.imgur.com/jNPKE3H.png"} alt="Easy Laptops Logo" className="h-6 sm:h-8 w-auto object-contain opacity-50 grayscale transition-all duration-300 hover:grayscale-0 hover:opacity-100" />
-            <p className={`text-[10px] sm:text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              © {new Date().getFullYear()} Easy Laptops. Todos los derechos reservados.
-            </p>
+      <footer className={`mt-auto px-4 border-t ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-50/50'} w-full relative z-40`}>
+        <div className="max-w-7xl mx-auto flex flex-col items-center">
+          {/* Social Media Section - Compact but legible */}
+          <div className="py-5 sm:py-6 flex flex-col items-center gap-3">
+            <p className={`text-[9px] font-bold uppercase tracking-[0.2em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Seguinos en redes</p>
+            <div className="flex items-center gap-4">
+              <button className="group flex flex-col items-center" title="Instagram">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${isDark ? 'bg-slate-800/50 group-hover:bg-[#E1306C]/10 border border-slate-700/50 group-hover:border-[#E1306C]/30' : 'bg-white border border-slate-200 shadow-sm'}`}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors duration-300 ${isDark ? 'text-slate-400 group-hover:text-[#E1306C]' : 'text-slate-600 group-hover:text-[#E1306C]'}`}><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+                </div>
+              </button>
+              <button className="group flex flex-col items-center" title="TikTok">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${isDark ? 'bg-slate-800/50 group-hover:bg-[#ff0050]/10 border border-slate-700/50 group-hover:border-[#ff0050]/30' : 'bg-white border border-slate-200 shadow-sm'}`}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors duration-300 ${isDark ? 'text-slate-400 group-hover:text-[#ff0050]' : 'text-slate-600 group-hover:text-[#ff0050]'}`}><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"></path></svg>
+                </div>
+              </button>
+              <button className="group flex flex-col items-center" title="WhatsApp">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${isDark ? 'bg-slate-800/50 group-hover:bg-[#25D366]/10 border border-slate-700/50 group-hover:border-[#25D366]/30' : 'bg-white border border-slate-200 shadow-sm'}`}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors duration-300 ${isDark ? 'text-slate-400 group-hover:text-[#25D366]' : 'text-slate-600 group-hover:text-[#25D366]'}`}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-14h.1a8.38 8.38 0 0 1 3.8.9L21 3z"></path></svg>
+                </div>
+              </button>
+            </div>
           </div>
+
+          <div className="w-full flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left py-6 sm:py-8 border-t border-slate-800/40">
+            <div className="flex flex-col items-center md:items-start gap-2">
+              <img src={isDark ? "https://i.imgur.com/2lSkLeX.png" : "https://i.imgur.com/jNPKE3H.png"} alt="Easy Laptops Logo" className="h-6 sm:h-8 w-auto object-contain opacity-50 grayscale transition-all duration-300 hover:grayscale-0 hover:opacity-100" />
+              <p className={`text-[10px] sm:text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                © {new Date().getFullYear()} Easy Laptops. Todos los derechos reservados.
+              </p>
+            </div>
           <div className="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-3">
             {['Términos y Condiciones', 'Política de Privacidad', 'Envíos y Devoluciones', 'Contacto'].map((link) => (
               <a key={link} href="#" className={`text-[10px] sm:text-xs font-semibold uppercase tracking-wider transition-colors ${isDark ? 'text-slate-400 hover:text-violet-400' : 'text-slate-500 hover:text-violet-600'}`}>
@@ -1592,7 +1697,8 @@ function CatalogoContent() {
             ))}
           </div>
         </div>
-      </footer>
+      </div>
+    </footer>
 
       {/* ========================================================
           ⭐ MODAL NUEVA RESEÑA (Solo Admin)
